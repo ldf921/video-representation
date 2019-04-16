@@ -1,0 +1,9 @@
+framework: cnn
+optimizer:
+    type: SGD
+    lr: 0.001
+    momentum: 0.9
+    weight_decay: 0.001
+data:
+    length: 1
+    loop: 16
