@@ -1,6 +1,7 @@
 framework: convlstm
 network: 
     lstm_units: 512
+    sync_bn: True
 optimizer:
     type: SGD
     lr: 0.001

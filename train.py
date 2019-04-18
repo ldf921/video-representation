@@ -1,15 +1,19 @@
 import argparse
 import os
-import yaml
+import sys
+sys.path.append('/app')
 
 import torch
+import yaml
 
 from lib.convlstm import ConvLSTMFramework, CNNFramework
 from lib.base import load_network
 
+
 parser = argparse.ArgumentParser()
 parser.add_argument('config')
 parser.add_argument('--test', action='store_true')
+parser.add_argument('-s', '--suffix', type=str, default=None)
 parser.add_argument('-c', '--checkpoint', type=str, default=None)
 parser.add_argument('-p', '--print_freq', type=int, default=100)
 parser.add_argument('-n', '--num_epochs', type=int, default=20)
@@ -33,7 +37,9 @@ CP_ROOT = 'checkpoints'
 if args.test:
     exp_dir = os.path.dirname(args.config)
 else:
-    exp_dir = os.path.join(CP_ROOT, args.config)
+    exp_dir = os.path.join(CP_ROOT, args.config.replace('config/', ''))
+    if args.suffix is not None:
+        exp_dir += "_" + args.suffix
     os.makedirs(exp_dir, exist_ok=True)
     with open(os.path.join(exp_dir, 'config.yaml'), 'w') as fo:
         yaml.dump(config, fo)
@@ -44,7 +50,7 @@ def save(framework, epoch):
 def print_dict(metrics, prefix):
     msg = "{} ".format(prefix)
     for k, v in metrics.items():
-        msg += '{}: {:.3f}, \t'.format(k, v)
+        msg += '{}: {:.4f}, \t'.format(k, v)
     return msg
 
 def train(framework):

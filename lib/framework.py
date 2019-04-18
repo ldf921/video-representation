@@ -5,6 +5,7 @@ from collections import defaultdict
 import torch
 import numpy as np
 from torch import nn
+from sync_batchnorm import DataParallelWithCallback
 
 from .video_data import dataset, sampler, transforms
 from .base import accuracy
@@ -35,9 +36,21 @@ class Framework:
         self.build_network()
         self.build_optimizer()
 
+    def get_param(self, keys, default=None):
+        node = self.config
+        for key in keys.split('.'):
+            if key in node:
+                node = node[key]
+            else:
+                return default
+        return node
+
     def cuda(self):
         self.model.cuda()
-        self.model = nn.DataParallel(self.model)
+        if self.get_param('network.sync_bn', False):
+            self.model = DataParallelWithCallback(self.model)
+        else:
+            self.model = nn.DataParallel(self.model)
 
     def build_optimizer(self):
         args = copy(self.config['optimizer'])
@@ -78,9 +91,9 @@ class Framework:
         data = dataset.build_ucf101_dataset(
                 split,
                 transforms=transforms.Compose([
-                    transforms.CenterCrop((224, 224)),
-                    transforms.ToTensor()
-                    ]),
+                   transforms.CenterCrop((224, 224)),
+                   transforms.ToTensor()
+                   ]),
                 length = length,
                 stride = stride,
                 config = self.config
@@ -147,8 +160,8 @@ class Framework:
                 for k, v in result.items():
                     metrics[k].append(v.cpu().numpy())
                 metrics['indices'].append(indices)
-                if i % self.config['print_freq'] == 0:
-                    print('Valid {}/{}'.format(i, len(dataloader)))
+                # if i % self.config['print_freq'] == 0:
+                    # print('Valid {}/{}'.format(i, len(dataloader)))
         for k in metrics:
             metrics[k] = np.concatenate(metrics[k], axis=0)
         return metrics
