@@ -20,6 +20,7 @@ def accuracy(scores, labels, weight=None):
 def load_network(net, path, name='module.'):
     # if not os.path.exists(path):
     #     path = os.path.join(CHECKPOINTS_PREFIX, path)
+    print('Loading checkpoint ', path)
     state_dict = torch.load(path)
     from collections import OrderedDict
     args_dict = OrderedDict()

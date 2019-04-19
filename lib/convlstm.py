@@ -6,12 +6,12 @@ from torch import nn
 from torchvision import models
 from sync_batchnorm import convert_model
 
-from .base import accuracy, time_distributed
+from .base import accuracy, time_distributed, load_network
 from .framework import Framework
 
 
 class ConvLSTM(nn.Module):
-    def __init__(self, classes, lstm_units, sync_bn=False):
+    def __init__(self, classes, lstm_units, sync_bn=False, load_lstm=None):
         super().__init__()
         resnet = models.resnet50(pretrained=True)
         if sync_bn:
@@ -22,6 +22,8 @@ class ConvLSTM(nn.Module):
         self.backbone = resnet
 
         self.lstm = nn.LSTM(in_planes, lstm_units)
+        if load_lstm is not None:
+            load_network(self.lstm, load_lstm, 'module.lstm.')
         self.fc = nn.Linear(lstm_units, classes)
 
     def forward(self, frames):
