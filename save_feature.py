@@ -11,6 +11,8 @@ from lib.video_data import dataset, sampler, transforms
 
 
 class ResnetFramework(Framework):
+    batch_axis = 0
+
     def build_network(self):
         resnet = models.resnet50(pretrained=True)
         resnet.fc = nn.Sequential()
@@ -23,7 +25,7 @@ class ResnetFramework(Framework):
         pass
 
     def predict_batch(self, frames, labels):
-        frames = torch.cat(frames, dim=0)
+        frames = torch.squeeze(frames, dim=0)
         return self.model(frames)
 
     @staticmethod

@@ -6,24 +6,26 @@ import numpy as np
 from torch import nn
 from torchvision import models
 
-from .base import accuracy
+from .base import accuracy, time_distributed
 from .framework import Framework
 from .video_data import dataset, sampler, transforms
 
 
 class LSTM(nn.Module):
-    def __init__(self, features, lstm_units):
+    def __init__(self, features, lstm_units, diff=False):
         super().__init__()
-
         self.lstm = nn.LSTM(features, lstm_units)
         self.fc = nn.Linear(lstm_units, features)
+        self.diff = diff
 
     def forward(self, features):
-        steps = features.size(0)
-        batch_size = features.size(1)
         self.lstm.flatten_parameters()
-        features, _ = self.lstm(features)
-        return self.fc(features.view(steps * batch_size, -1)).view(steps, batch_size, -1)
+        out_features, _ = self.lstm(features)
+        out_features = time_distributed(self.fc, out_features)
+        if self.diff:
+            return out_features + features
+        else:
+            return out_features
 
 
 class ConvLSTM(nn.Module):
@@ -103,13 +105,8 @@ class SeqFramework(Framework):
         self.train_data, self.train_loader = build_dataset('train_' + v, True, self.config)
         self.val_data, self.val_loader = build_dataset('valid_' + v, False, self.config)
 
-    def cuda(self):
-        self.model.cuda()
-        self.model = nn.DataParallel(self.model, dim=1)
-
     def train_batch(self, features, labels):
-        steps = len(features)
-        features = torch.stack(features, dim=0) # T * B * ...
+        steps = features.size(0)
         if self.feature:
             reconstr_features = self.model(features.narrow(0, 0, steps - 1))
         else:
@@ -121,7 +118,7 @@ class SeqFramework(Framework):
         return dict(loss=loss, naive=naive_loss)
 
     def eval_batch(self, features, labels):
-        return train_batch(features, labels)
+        return self.train_batch(features, labels)
 
     def valid(self):
         return self.evaluate(self.val_loader)

@@ -30,6 +30,8 @@ class AverageMeter(object):
 
 
 class Framework:
+    batch_axis = 1
+
     def __init__(self, config):
         self.config = config
         self.build_dataset()
@@ -48,9 +50,9 @@ class Framework:
     def cuda(self):
         self.model.cuda()
         if self.get_param('network.sync_bn', False):
-            self.model = DataParallelWithCallback(self.model, dim=1)
+            self.model = DataParallelWithCallback(self.model, dim=self.batch_axis)
         else:
-            self.model = nn.DataParallel(self.model, dim=1)
+            self.model = nn.DataParallel(self.model, dim=self.batch_axis)
 
     def build_optimizer(self):
         args = copy(self.config['optimizer'])
@@ -109,7 +111,7 @@ class Framework:
 
 
     def prepare_data(self, data):
-        frames = [frame.cuda(non_blocking=True) for frame in data[0]]
+        frames = torch.stack(data[0], dim=0).cuda(non_blocking=True)
         labels = data[1].cuda(non_blocking=True)
         vids = data[2].numpy()
         return (frames, labels), vids
@@ -124,7 +126,7 @@ class Framework:
             metrics['data_time'].update(time.time() - end)
 
             args, _ = self.prepare_data(data)
-            batch_size = args[0][0].size(0)
+            batch_size = args[0].size(1)
             result = self.train_batch(*args)
             loss = result['loss']
             for k, v in result.items():
@@ -162,8 +164,8 @@ class Framework:
                 for k, v in result.items():
                     metrics[k].append(v.cpu().numpy())
                 metrics['indices'].append(indices)
-                # if i % self.config['print_freq'] == 0:
-                    # print('Valid {}/{}'.format(i, len(dataloader)))
+                if i % self.config['print_freq'] == 0:
+                    print('Valid {}/{}'.format(i, len(dataloader)))
         for k in metrics:
             metrics[k] = np.concatenate(metrics[k], axis=0)
         return metrics

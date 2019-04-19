@@ -2,6 +2,11 @@ import os
 import torch
 from torch import nn
 
+def time_distributed(module, tensor):
+    size = tensor.size()
+    output = module(tensor.view((size[0] * size[1],) + size[2:]))
+    return output.view((size[0], size[1]) + output.size()[1:])
+
 def accuracy(scores, labels, weight=None):
     with torch.no_grad():
         _, pred = torch.max(scores, dim=-1)

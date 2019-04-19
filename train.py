@@ -13,7 +13,7 @@ from lib.lstm import SeqFramework
 
 parser = argparse.ArgumentParser()
 parser.add_argument('config')
-parser.add_argument('--test', action='store_true')
+parser.add_argument('--test', type=lambda x : x.split(','), default=None)
 parser.add_argument('-s', '--suffix', type=str, default=None)
 parser.add_argument('-c', '--checkpoint', type=str, default=None)
 parser.add_argument('-p', '--print_freq', type=int, default=100)
@@ -29,6 +29,15 @@ config['print_freq'] = args.print_freq
 config['batch_size'] = args.batch_size
 config['num_worker'] = args.num_worker
 
+if args.suffix is not None:
+    for arg in args.suffix.split('_'):
+        if arg.startswith('lr'):
+            config['optimizer']['lr'] = float(arg[2:])
+            print('Setting lr', config['optimizer']['lr'])
+        elif arg.startswith('wd'):
+            config['optimizer']['weight_decay'] = float(arg[2:])
+            print('Setting wd', config['optimizer']['weight_decay'])
+
 if config['framework'] == 'convlstm':
     framework = ConvLSTMFramework(config)
 elif config['framework'] == 'cnn':
@@ -37,7 +46,7 @@ elif config['framework'] == 'seq':
     framework = SeqFramework(config)
 
 CP_ROOT = 'checkpoints'
-if args.test:
+if args.test is not None:
     exp_dir = os.path.dirname(args.config)
 else:
     exp_dir = os.path.join(CP_ROOT, args.config.replace('config/', ''))
@@ -71,11 +80,12 @@ def train(framework):
 def test(framework):
     load_network(framework.model, os.path.join(exp_dir, args.checkpoint))
     framework.cuda()
-    data, loader = framework.build_test_dataset('test1')
-    result = framework.test(data, loader)
-    print(print_dict(result, 'Test'))
+    for subset in args.test:
+        data, loader = framework.build_test_dataset(subset)
+        result = framework.test(data, loader)
+        print(print_dict(result, subset))
 
-if args.test:
+if args.test is not None:
     test(framework)
 else:
     train(framework)

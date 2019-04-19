@@ -6,7 +6,7 @@ from torch import nn
 from torchvision import models
 from sync_batchnorm import convert_model
 
-from .base import accuracy
+from .base import accuracy, time_distributed
 from .framework import Framework
 
 
@@ -25,14 +25,10 @@ class ConvLSTM(nn.Module):
         self.fc = nn.Linear(lstm_units, classes)
 
     def forward(self, frames):
-        batch_size = frames[0].size(0)
-        steps = len(frames)
         self.lstm.flatten_parameters()
-
-        frames = torch.cat(frames, dim=0)
-        features = self.backbone(frames).view(steps, batch_size, -1)
+        features = time_distributed(self.backbone, frames)
         features, _ = self.lstm(features)
-        return self.fc(features.view(steps * batch_size, -1))
+        return time_distributed(self.fc, features)
 
 
 class CNN(nn.Module):
@@ -45,30 +41,28 @@ class CNN(nn.Module):
         self.fc = nn.Linear(in_planes, classes)
 
     def forward(self, frames):
-        batch_size = frames[0].size(0)
-        steps = len(frames)
-
-        frames = torch.cat(frames, dim=0)
-        features = self.backbone(frames).view(steps, batch_size, -1)
-        return self.fc(features.view(steps * batch_size, -1))
+        features = time_distributed(self.backbone, frames)
+        return time_distributed(self.fc, features)
 
 
 class SeqClsMixin:
     def train_batch(self, frames, labels):
-        labels = labels.repeat(len(frames))
-        logits = self.model(frames)
+        steps = frames.size(0)
+        batch_size = frames.size(1)
+        labels = labels.repeat(steps) # T * B
+        logits = self.model(frames).view(steps * batch_size, -1)
         loss = nn.CrossEntropyLoss()(logits, labels)
         acc = accuracy(logits, labels)
         return dict(loss=loss, acc=acc)
 
     def predict_batch(self, frames, labels):
-        batch_size = frames[0].size(0)
-        steps = len(frames)
+        steps = frames.size(0)
+        batch_size = frames.size(1)
         logits = self.model(frames)
-        proba = F.softmax(logits, dim=1).view(steps, batch_size, -1)
-        proba = torch.mean(proba, dim=0)
+        proba = F.softmax(logits, dim=-1)
+        proba = torch.mean(proba, dim=0) # B * Classes
 
-        loss = nn.CrossEntropyLoss(reduction='none')(logits, labels.repeat(steps))
+        loss = nn.CrossEntropyLoss(reduction='none')(logits.view(steps * batch_size, -1), labels.repeat(steps))
         loss = loss.view(steps, batch_size).mean(dim=0)
         ret = dict(raw_loss=loss, proba=proba)
         return ret
