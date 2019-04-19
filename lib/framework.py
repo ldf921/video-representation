@@ -48,9 +48,9 @@ class Framework:
     def cuda(self):
         self.model.cuda()
         if self.get_param('network.sync_bn', False):
-            self.model = DataParallelWithCallback(self.model)
+            self.model = DataParallelWithCallback(self.model, dim=1)
         else:
-            self.model = nn.DataParallel(self.model)
+            self.model = nn.DataParallel(self.model, dim=1)
 
     def build_optimizer(self):
         args = copy(self.config['optimizer'])
@@ -147,7 +147,9 @@ class Framework:
                     print('{key} {val.avg:.3f}'.format(key=k, val=v), end='\t')
                 print()
 
-        return dict(loss=metrics['loss'].avg, acc=metrics['acc'].avg)
+        metrics.pop('batch_time')
+        metrics.pop('data_time')
+        return {k : v.avg for k, v in metrics.items()}
 
 
     def predict(self, dataloader):
@@ -165,5 +167,17 @@ class Framework:
         for k in metrics:
             metrics[k] = np.concatenate(metrics[k], axis=0)
         return metrics
+
+    def evaluate(self, dataloader):
+        self.model.eval()
+        metrics = defaultdict(AverageMeter)
+        with torch.no_grad():
+            for i, data in enumerate(dataloader):
+                args, indices = self.prepare_data(data)
+                batch_size = args[0][0].size(0)
+                result = self.eval_batch(*args)
+                for k, v in result.items():
+                    metrics[k].update(v.item(), batch_size)
+        return {k : v.avg for k, v in metrics.items()}
 
 

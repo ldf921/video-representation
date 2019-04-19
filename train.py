@@ -8,6 +8,7 @@ import yaml
 
 from lib.convlstm import ConvLSTMFramework, CNNFramework
 from lib.base import load_network
+from lib.lstm import SeqFramework
 
 
 parser = argparse.ArgumentParser()
@@ -32,6 +33,8 @@ if config['framework'] == 'convlstm':
     framework = ConvLSTMFramework(config)
 elif config['framework'] == 'cnn':
     framework = CNNFramework(config)
+elif config['framework'] == 'seq':
+    framework = SeqFramework(config)
 
 CP_ROOT = 'checkpoints'
 if args.test:

@@ -57,7 +57,6 @@ class ResnetFramework(Framework):
                         features = []
                 features.append(result[bound:])
             self.write_feature(dataset, vid, features)
-        return metrics
 
 def build_dataset(split, config):
     length = 1
@@ -83,7 +82,7 @@ def build_dataset(split, config):
 def main(config):
     framework = ResnetFramework(config)
     framework.cuda()
-    data, loader = build_dataset('train_v1', config)
+    data, loader = build_dataset('valid_v1', config)
     framework.save_feature(data, loader)
 
 
