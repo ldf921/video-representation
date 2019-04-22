@@ -1,0 +1,12 @@
+framework: seq
+network: 
+    lstm_units: 512
+optimizer:
+    type: Adam
+    lr: 0.001
+    weight_decay: 0.001
+data:
+    version: v1
+    length: 17
+    loop: 2
+    feature: False

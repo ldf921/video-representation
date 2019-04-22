@@ -11,14 +11,16 @@ from .framework import Framework
 
 
 class ConvLSTM(nn.Module):
-    def __init__(self, classes, lstm_units, sync_bn=False, load_lstm=None):
+    def __init__(self, classes, lstm_units, sync_bn=False, load_lstm=None, load_backbone=None):
         super().__init__()
         resnet = models.resnet50(pretrained=True)
+        in_planes = resnet.fc.in_features
+        resnet.fc = nn.Sequential()
+        if load_backbone is not None:
+            load_network(resnet, load_backbone, 'module.backbone.')
         if sync_bn:
             print('Convert model using sync bn')
             resnet = convert_model(resnet)
-        in_planes = resnet.fc.in_features
-        resnet.fc = nn.Sequential()
         self.backbone = resnet
 
         self.lstm = nn.LSTM(in_planes, lstm_units)

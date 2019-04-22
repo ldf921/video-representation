@@ -1,6 +1,7 @@
 framework: convlstm
 network: 
     lstm_units: 512
+    load_lstm: checkpoints/seq_next_diff/3.model
 optimizer:
     type: SGD
     lr: 0.0003

@@ -1,10 +1,10 @@
 framework: convlstm
 network: 
     lstm_units: 512
+    load_lstm: checkpoints/seqorder/2.model
+    load_backbone: checkpoints/seqorder/2.model
 optimizer:
-    type: SGD
-    lr: 0.0003
-    momentum: 0.9
+    type: Adam
     weight_decay: 0.001
 data:
     length: 16

@@ -8,7 +8,7 @@ import yaml
 
 from lib.convlstm import ConvLSTMFramework, CNNFramework
 from lib.base import load_network
-from lib.lstm import SeqFramework
+from lib.lstm import SeqFramework, SeqPredFramework
 
 
 parser = argparse.ArgumentParser()
@@ -37,6 +37,11 @@ if args.suffix is not None:
         elif arg.startswith('wd'):
             config['optimizer']['weight_decay'] = float(arg[2:])
             print('Setting wd', config['optimizer']['weight_decay'])
+        elif arg == 'moment':
+            config['optimizer']['type'] = 'SGD'
+            config['optimizer']['momentum'] = 0.9
+        else:
+            print('Suffix', arg)
 
 if config['framework'] == 'convlstm':
     framework = ConvLSTMFramework(config)
@@ -44,6 +49,8 @@ elif config['framework'] == 'cnn':
     framework = CNNFramework(config)
 elif config['framework'] == 'seq':
     framework = SeqFramework(config)
+elif config['framework'] == 'seqpred':
+    framework = SeqPredFramework(config)
 
 CP_ROOT = 'checkpoints'
 if args.test is not None:
@@ -70,12 +77,13 @@ def train(framework):
     with open(os.path.join(exp_dir, 'log'), 'a') as flog:
         for epoch in range(1, args.num_epochs + 1):
             train_result = framework.train_epoch(epoch)
+            save(framework, epoch)
             val_result = framework.valid()
             msg = 'Epoch [{}/{}], {}{}'.format(epoch, args.num_epochs,
                     print_dict(train_result, 'Train'), print_dict(val_result, 'Val'))
-            save(framework, epoch)
             print(msg)
             print(msg, file=flog)
+            flog.flush()
 
 def test(framework):
     load_network(framework.model, os.path.join(exp_dir, args.checkpoint))

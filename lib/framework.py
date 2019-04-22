@@ -180,6 +180,8 @@ class Framework:
                 result = self.eval_batch(*args)
                 for k, v in result.items():
                     metrics[k].update(v.item(), batch_size)
+                if i % self.config['print_freq'] == 0:
+                    print('Valid {}/{}'.format(i, len(dataloader)))
         return {k : v.avg for k, v in metrics.items()}
 
 

@@ -2,9 +2,7 @@ framework: convlstm
 network: 
     lstm_units: 512
 optimizer:
-    type: SGD
-    lr: 0.0003
-    momentum: 0.9
+    type: Adam
     weight_decay: 0.001
 data:
     length: 16

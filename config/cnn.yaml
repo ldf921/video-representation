@@ -1,8 +1,6 @@
 framework: cnn
 optimizer:
-    type: SGD
-    lr: 0.001
-    momentum: 0.9
+    type: adam
     weight_decay: 0.001
 data:
     length: 1
