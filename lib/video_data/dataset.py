@@ -63,7 +63,11 @@ def build_ucf101_dataset(split, transforms, length, stride, config):
     data_root = '/data/UCF101'
     with open(os.path.join(data_root, '{}.pkl'.format(split)), 'rb') as fi:
         data = pkl.load(fi)
-    dataset = VideoDataset(data['frames'], np.array(data['labels']) - 1, data_root, transforms, length, stride)
+    if isinstance(data['frames'][0], tuple):
+        frames = [VideoList(*d)for d in data['frames'] if d[1] > 0]
+    else:
+        frames = data['frames']
+    dataset = VideoDataset(frames, np.array(data['labels']) - 1, data_root, transforms, length, stride)
     dataset.classes = 101
     print('UCF101-{} Samples: {}'.format(split, len(dataset)))
     return dataset
