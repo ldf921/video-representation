@@ -9,6 +9,14 @@ download.sh
 python3 extract_frames.py
 ```
 
+Set your environment variables in `path.py`.
+```python3
+REPO_ROOT = '{repo location}/video-representation' # root of the repo
+UCF101_ROOT = ./data/UCF101 # root for UCF-101 data set
+KINETICS_ROOT = '/data/kinetics-400'
+```
+
+
 Train
 ============
 Usage 
