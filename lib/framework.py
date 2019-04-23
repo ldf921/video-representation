@@ -61,7 +61,21 @@ class Framework:
         elif args['type'] == 'Adam':
             optim_class = torch.optim.Adam
         args.pop('type')
+        if isinstance(args['lr'], list):
+            args['lr'] = args['lr'][0][0]
         self.optimizer = optim_class(self.model.parameters(), **args)
+
+    def set_learning_rate(self, epoch):
+        lrs = self.config['optimizer']['lr']
+        if isinstance(lrs, list):
+            c = 0
+            for lr, num_epochs in lrs:
+                c += num_epochs
+                if epoch <= c:
+                    break
+            for param_group in self.optimizer.param_groups:
+                param_group['lr'] = lr
+            print('setting learning rate {}'.format(lr))
 
 
     def build_dataset(self):
@@ -119,6 +133,7 @@ class Framework:
 
     def train_epoch(self, epoch):
         self.model.train()
+        self.set_learning_rate(epoch)
         end = time.time()
         metrics = defaultdict(AverageMeter)
         for i, data in enumerate(self.train_loader):
