@@ -11,7 +11,8 @@ if __name__ == '__main__':
         classes = {class_name.replace(' ', '_') : i for i, class_name in enumerate(json.load(fi))}
     data_root = 'processed'
     s = 0
-    for subset in ('valid', ):
+    np.random.seed(233)
+    for subset in ('train', 'valid'):
         frames = []
         labels = []
         with open('frames-{}.txt'.format(subset), 'r') as f:
@@ -19,13 +20,36 @@ if __name__ == '__main__':
         subset_root = os.path.join(data_root, subset)
         for class_name in os.listdir(subset_root):
             class_root = os.path.join(subset_root, class_name)
-            print(class_name, len(os.listdir(class_root)))
             s += len(os.listdir(class_root))
+            sum_frames = 0
+            nvids = 0
             for vid in os.listdir(class_root):
                 if vid in processed:
-                    frames.append((os.path.join(class_root, vid), int(processed[vid])))
+                    video_root = os.path.join(class_root, vid)
+                    actual_frames = len(os.listdir(video_root))
+                    frames.append((video_root, actual_frames))
+                    sum_frames += actual_frames
+                    nvids += 1
                     labels.append(classes[class_name])
-        with open('{}.pkl'.format(subset), 'wb') as fo:
-            pkl.dump(dict(frames=frames, labels=labels), fo)
+            if nvids > 0:
+                print(class_name, nvids, sum_frames / nvids)
+        if True:
+            with open('{}.pkl'.format(subset), 'wb') as fo:
+                pkl.dump(dict(frames=frames, labels=labels), fo)
+        else:
+            n = len(frames)
+            num_val = int(0.1 * n + 0.5)
+            indices = np.random.permutation(n)
+            subset_indices = {
+                    'train' : indices[num_val:],
+                    'val' : indices[:num_val]
+                    }
+            for subset, indices in subset_indices.items():
+                sframes = [ frames[i] for i in sorted(indices) ]
+                slabels = [ labels[i] for i in sorted(indices) ]
+                with open('{}.pkl'.format(subset), 'wb') as fo:
+                    pkl.dump(dict(frames=sframes, labels=slabels), fo)
+                print('{} {}'.format(subset, len(sframes)))
+            print(n)
     print('Total {} videos'.format(s))
 
