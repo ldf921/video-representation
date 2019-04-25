@@ -6,7 +6,7 @@ sys.path.append('/app')
 import torch
 import yaml
 
-from lib.convlstm import ConvLSTMFramework, CNNFramework
+from lib.convlstm import ConvLSTMFramework, CNNFramework, CorrelationLSTMFramework
 from lib.base import load_network
 from lib.lstm import SeqFramework, SeqPredFramework
 
@@ -51,6 +51,8 @@ elif config['framework'] == 'seq':
     framework = SeqFramework(config)
 elif config['framework'] == 'seqpred':
     framework = SeqPredFramework(config)
+elif config['framework'] == 'corrlstm':
+    framework = CorrelationLSTMFramework(config)
 
 CP_ROOT = 'checkpoints'
 if args.test is not None:

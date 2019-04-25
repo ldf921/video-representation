@@ -123,6 +123,7 @@ class Framework:
                 )
         return data, loader
 
+    # Why Non_Blocking
 
     def prepare_data(self, data):
         frames = torch.stack(data[0], dim=0).cuda(non_blocking=True)
