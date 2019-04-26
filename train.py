@@ -9,6 +9,7 @@ import yaml
 from lib.convlstm import ConvLSTMFramework, CNNFramework
 from lib.base import load_network
 from lib.lstm import SeqFramework, SeqPredFramework
+from lib.stackcnn import stackcl_framework
 
 
 parser = argparse.ArgumentParser()
@@ -51,6 +52,8 @@ elif config['framework'] == 'seq':
     framework = SeqFramework(config)
 elif config['framework'] == 'seqpred':
     framework = SeqPredFramework(config)
+elif config['framework'].startswith('stackcl'):
+    framework = stackcl_framework(config)
 
 CP_ROOT = 'checkpoints'
 if args.test is not None:
