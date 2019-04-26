@@ -29,9 +29,11 @@ class LSTM(nn.Module):
 
 
 class ConvLSTM(nn.Module):
-    def __init__(self, lstm_units, train_backbone = False):
+    def __init__(self, lstm_units, train_backbone = False, imagenet = True):
         super().__init__()
-        resnet = models.resnet50(pretrained=True)
+        if not imagenet:
+            print('backbone from stratch')
+        resnet = models.resnet50(pretrained=imagenet)
         for param in resnet.parameters():
             param.requires_grad = train_backbone
         self.train_backbone = train_backbone
@@ -61,9 +63,11 @@ class ConvLSTM(nn.Module):
 
 
 class FramePredict(nn.Module):
-    def __init__(self, lstm_units, task, train_backbone = False):
+    def __init__(self, lstm_units, task, train_backbone = False, imagenet = True):
         super().__init__()
-        resnet = models.resnet50(pretrained=True)
+        if not imagenet:
+            print('Network.Imanget: training from scratch')
+        resnet = models.resnet50(pretrained=imagenet)
         for param in resnet.parameters():
             param.requires_grad = train_backbone
         self.train_backbone = train_backbone
@@ -142,10 +146,17 @@ def l2loss(x, y):
 
 def build_dataset(split, shuffle, config):
     length = config['data']['length']
-    t=transforms.Compose([
+    t = transforms.Compose([
        transforms.CenterCrop((224, 224)),
        transforms.ToTensor()
        ])
+    if split.startswith('train') and config['data'].get('augmentation', 'val') == 'normal':
+        print('apply normal transformation on split {}'.format(split))
+        t = transforms.Compose([
+            transforms.RandomResizedCrop((224, 224), (0.5, 1.0), ratio = (3 / 4, 4 / 3)),
+            transforms.RandomHorizontalFlip(),
+            transforms.ToTensor()
+            ])
     feature = config['data'].get('feature', True)
     data = dataset.build_kinetics_dataset(
             split,
