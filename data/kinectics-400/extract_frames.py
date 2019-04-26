@@ -25,14 +25,15 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--video', default='/raw')
     parser.add_argument('--output', default='processed')
+    parser.add_argument('-t', '--num_workers', type=int, default=8)
     args = parser.parse_args()
     data_root = args.video
     output_root = args.output
     s = 0
     event = Event()
-    q = Queue(20)
+    q = Queue(args.num_workers * 2)
     oq = Queue(100)
-    pool = [Process(target=call, args=(event, q, oq)) for i in range(4)]
+    pool = [Process(target=call, args=(event, q, oq)) for i in range(args.num_workers)]
     for p in pool:
         p.start()
     for subset in ('valid', 'train', ):
@@ -66,7 +67,7 @@ if __name__ == '__main__':
                             continue
                         output_info = output.decode().split('\n')[-3]
                         frames = re.match(r'^frame=\s*(\d+)', output_info).group(1)
-                        print('{}\t{}'.format(output_path, frames))
+                        print('{}\t{}'.format(vid, frames))
                         fo.write('{} {}\n'.format(vid, frames))
         print('{} videos processed'.format(s))
     q.close()
