@@ -1,0 +1,13 @@
+framework: stackcl-order
+network: 
+    lstm_units: 512
+optimizer:
+    type: SGD
+    momentum: 0.9
+    weight_decay: 0.0001
+data:
+    version: v2
+    augmentation: normal
+    length: 11 
+    loop: 1
+    feature: False

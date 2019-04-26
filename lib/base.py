@@ -4,7 +4,15 @@ from torch import nn
 
 def time_distributed(module, tensor):
     size = tensor.size()
-    output = module(tensor.view((size[0] * size[1],) + size[2:]))
+    output = tensor.view((size[0] * size[1],) + size[2:])
+    output = module(output)
+    return output.view((size[0], size[1]) + output.size()[1:])
+
+def time_distributed_apply(tensor, *modules):
+    size = tensor.size()
+    output = tensor.view((size[0] * size[1],) + size[2:])
+    for layer in modules:
+        output = layer(output)
     return output.view((size[0], size[1]) + output.size()[1:])
 
 def accuracy(scores, labels, weight=None):

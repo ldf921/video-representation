@@ -9,6 +9,7 @@ import yaml
 from lib.convlstm import ConvLSTMFramework, CNNFramework, CorrelationLSTMFramework
 from lib.base import load_network
 from lib.lstm import SeqFramework, SeqPredFramework
+from lib.stackcnn import stackcl_framework
 
 
 parser = argparse.ArgumentParser()
