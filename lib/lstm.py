@@ -1,4 +1,3 @@
-
 import pandas as pd
 import torch
 import torch.nn.functional as F
@@ -6,9 +5,10 @@ import numpy as np
 from torch import nn
 from torchvision import models
 
-from .base import accuracy, time_distributed
+from .base import accuracy, time_distributed, feature_extraction
 from .framework import Framework
 from .video_data import dataset, sampler, transforms
+from typing import Tuple
 
 
 class LSTM(nn.Module):
@@ -134,7 +134,94 @@ class FramePredict(nn.Module):
             labels = self.label.repeat(T, batch_size, 1).view(T, batch_size * 2)
             return predictions, labels
 
+class FrameCorrelationPredict(nn.Module):
 
+    def __init__(self, lstm_units, train_backbone = False):
+        """ Construct predictor similar to FramePridict using CorrelationLSTM
+
+        Args:
+            lstm_units (int): Number of LSTM units
+            train_backbone (bool, optional): Whether to train Resnet or not. Defaults to False.
+        """
+        super().__init__()
+        # Construct Resnet
+        resnet = models.resnet50(pretrained=True)
+        # Set train Resnet or not
+        for param in resnet.parameters():
+            param.requires_grad = train_backbone
+        self.train_backbone = train_backbone
+        self.backbone = resnet
+
+        # Construct LSTM
+        # Calculate LSTM input dimension 28^2 + 14^2 + 7^2 = 1029
+        input_dim = 1029
+        self.lstm_units = lstm_units
+        self.lstm = nn.LSTM(input_dim, lstm_units)
+        # Construct FC, input dimension (4 * lstm_unit)
+        self.fc = nn.Sequential(
+                    nn.Linear((4 * lstm_unit), 100),
+                    nn.ReLU(),
+                    nn.Linear(100, 2)
+                    )
+        self.register_buffer('pos', torch.LongTensor([1]))
+        self.register_buffer('neg', torch.LongTensor([0]))
+
+    def train(self, mode=True):
+        for layer in self.children():
+            if layer == self.backbone:
+                layer.train(self.train_backbone and mode)
+                if not self.train_backbone and mode:
+                    print('Fixing resnet in evaluation mode')
+            else:
+                layer.train(mode)
+
+    def forward(self, frames: torch.tensor) -> Tuple[torch.tensor, torch.tensor]:
+        """ Build Correlation LSTM for order prediction task
+            Predict the order of F - 2 pair of frames (F - 1 frames used)
+            Feed 2 frames back and forth for symmetry
+            Return predictions and labels in [T * N * 2 * 2]
+
+        Args:
+            frames (torch.tensor): Input frames [F * N * C * H * W]
+        """
+        # Get correlation features [F * N * 1029]
+        features = feature_extraction(frames)
+        F, N, _ = features.size()
+        # Note that our last frame feature is inaccurate due to looping
+        # The idea is, the output of consecutive frames and skipping one frame should be different
+        T = F - 2
+        self.lstm.flatten_parameters()
+        # Feed in [0, T] as context
+        # I hate to do this but here we loop
+        h, c = torch.zeros((N, self.lstm_units)), torch.zeros((N, self.lstm_units))
+        first, second = [], []
+        for t in range(T):
+            first_output, (h_next, c_next) = self.lstm(features.narrow(0, t, 1), (h, c))
+            second_output, _ = self.lstm(features.narrow(0, t, 1), (h, c))
+            first.append(first_output)
+            second.append(second_output)
+            h, c = h_next, c_next
+
+        # Each one is [T * N * hidden_size]
+        last_features = [torch.stack(first), torch.stack(second)]
+        # Basic feature engineering, key notion is to choose asymmetrical operations
+        # Engineer result is [T * N * (4 * lstm_unit)]
+        # Construct features [first, second] and [second first], we'll set labels accordingly
+        engineered_features = []
+        for i in range(2):
+            j = 1 - i
+            engineer = torch.cat([  last_features[i],
+                                    last_features[j],
+                                    last_features[i] - last_features[j],
+                                    torch.cross(last_features[i], last_features[j])], dim = -1)
+            engineered_features.append(engineer)
+        # Final features [T * (2 * N) * (4 * lstm_units)], can be seen as augmenting input
+        final_features = torch.cat(engineered_features, dim = 1)
+        predictions = self.fc(final_features.view(T*2*N, -1)).view(T, 2*N, 2)
+        # Prepare labels
+        labels = torch.cat([self.pos.repeat(N), self.neg.repeat(N)]]  # [(2 * N)]
+        labels = labels.repeat(T, 1) # [T * (2 * N)]
+        return predictions, labels
 
 def l2loss(x, y):
     return torch.sum((x - y) ** 2, dim=-1)

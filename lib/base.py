@@ -28,3 +28,34 @@ def load_network(net, path, name='module.'):
         if k.startswith(name):
             args_dict[k.replace(name, '')] = v
     net.load_state_dict(args_dict)
+
+def feature_extraction(model: nn.Module, input: torch.tensor) -> torch.tensor:
+    """ Extract features from intermediate layers using register_forward_hook
+        Return dim [F * N * input_dim]
+        Last frame is in accurate due to looping, proceed with caution
+    Args:
+        model (nn.Module): The model in question, Resnet 50
+    """
+    # Transform input [F * N * C * H * W] -> [(F * N) * C * H * W]
+    F, N, C, H, W = input.size()
+    input = input.view(F * N, C, H, W)
+    # 3 features in total, each is [(F * N) * C_layer * H_layer * W_layer]
+    features = []
+    # Hook function for register_forward_hook
+    def hook(module, input, output):
+        _, C_layer, H_layer, W_layer = output.size()
+        features.append(output.view(F, N, C_layer, H_layer, W_layer))
+    # Hook it up
+    model.layer2[-1].register_forward_hook(hook)
+    model.layer3[-1].register_forward_hook(hook)
+    model.layer4[-1].register_forward_hook(hook)
+    model(input)
+    # Compute correlation
+    correlations = []
+    for feature in features:
+        # Shift output in F dimension, align each on with next frame
+        next_feature = feature.roll(-1, dims=0)
+        # Sum over C dimension, view into [F * N * (H_layer * W_layer)]
+        correlations.append(torch.tensordot(feature, next_feature, dims=2).view(F, N, -1))
+    # Stack and return
+    return torch.stack(correlations, dim=2)

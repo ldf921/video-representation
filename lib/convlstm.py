@@ -6,7 +6,7 @@ from torch import nn
 from torchvision import models
 from sync_batchnorm import convert_model
 
-from .base import accuracy, time_distributed, load_network
+from .base import accuracy, time_distributed, load_network, feature_extraction
 from .framework import Framework
 
 
@@ -37,9 +37,9 @@ class ConvLSTM(nn.Module):
 class CorrelationLSTM(nn.Module):
 
     def __init__(self, classes, lstm_units, load_lstm=None, load_backbone=None):
-        """Construct a CNN-LSTM that computes correlation of last 3 layer of ResNet on consequtive frames.
-           [F * N * C * H * W] [F * N * C * H * W] -> [F * N * H * W]
-           Each frame is encoded into 28^2 + 14^2 + 7^2 = 1029
+        """ Construct a CNN-LSTM that computes correlation of last 3 layer of ResNet on consequtive frames.
+            [F * N * C * H * W] [F * N * C * H * W] -> [F * N * H * W]
+            Each frame is encoded into 28^2 + 14^2 + 7^2 = 1029
         
         Args:
             classes (int): number of classes
@@ -61,36 +61,6 @@ class CorrelationLSTM(nn.Module):
         if load_lstm is not None:
             load_network(self.lstm, load_lstm, 'module.lstm.')
         self.fc = nn.Linear(lstm_units, classes)
-
-    def feature_extraction(self, model: nn.Module, input: torch.tensor) -> torch.tensor:
-        """Extract features from intermediate layers using register_forward_hook
-           Return dim [F * N * input_dim]
-        Args:
-            model (nn.Module): The model in question, Resnet 50
-        """
-        # Transform input [F * N * C * H * W] -> [(F * N) * C * H * W]
-        F, N, C, H, W = input.size()
-        input = input.view(F * N, C, H, W)
-        # 3 features in total, each is [(F * N) * C_layer * H_layer * W_layer]
-        features = []
-        # Hook function for register_forward_hook
-        def hook(module, input, output):
-            _, C_layer, H_layer, W_layer = output.size()
-            features.append(output.view(F, N, C_layer, H_layer, W_layer))
-        # Hook it up
-        model.layer2[-1].register_forward_hook(hook)
-        model.layer3[-1].register_forward_hook(hook)
-        model.layer4[-1].register_forward_hook(hook)
-        model(input)
-        # Compute correlation
-        correlations = []
-        for feature in features:
-            # Shift output in F dimension, align each on with next frame
-            next_feature = feature.roll(-1, dims=0)
-            # Sum over C dimension, view into [F * N * (H_layer * W_layer)]
-            correlations.append(torch.tensordot(feature, next_feature, dims=2).view(F, N, -1))
-        # Stack and return
-        return torch.stack(correlations, dim=2)
         
     def forward(self, frames):
         self.lstm.flatten_parameters()
