@@ -60,7 +60,7 @@ class VideoFeatureDataset(VideoDataset):
 
 
 def build_ucf101_dataset(split, transforms, length, stride, config):
-    data_root = '/data/UCF101'
+    data_root = 'data/UCF101'
     with open(os.path.join(data_root, '{}.pkl'.format(split)), 'rb') as fi:
         data = pkl.load(fi)
     if isinstance(data['frames'][0], tuple):
