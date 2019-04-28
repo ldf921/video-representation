@@ -6,7 +6,7 @@ from torch import nn
 from torchvision import models
 from sync_batchnorm import convert_model
 
-from .base import accuracy, time_distributed, load_network, feature_extraction
+from .base import accuracy, time_distributed, load_network, feature_extraction, kernel_feature_extraction, one_kernel_feature_extraction
 from .framework import Framework
 
 
@@ -55,20 +55,26 @@ class CorrelationLSTM(nn.Module):
         self.backbone = resnet
 
         # Construct LSTM
-        # Calculate LSTM input dimension 28^2 + 14^2 + 7^2 = 1029
-        input_dim = 1029
+        input_dim = 2048
         self.lstm = nn.LSTM(input_dim, lstm_units)
         if load_lstm is not None:
             load_network(self.lstm, load_lstm, 'module.lstm.')
         self.fc = nn.Linear(lstm_units, classes)
+        # self.fc = nn.Sequential(nn.Linear(lstm_units, 200),
+        #                         nn.ReLU(),
+        #                         nn.Linear(200, classes))
         
     def forward(self, frames):
         self.lstm.flatten_parameters()
-        features = feature_extraction(frames)
-        features, _ = self.lstm(features)
+        # features = feature_extraction(self.backbone, frames)
+        features = one_kernel_feature_extraction(self.backbone, frames)
         F, N, _ = features.size()
-        output = self.fc(features.view(F * N, -1))
-        return output.view(F, N, -1)
+        # T = F - 1
+        T = F - 1
+        features = features.narrow(0, 0, T)
+        features, _ = self.lstm(features)
+        output = self.fc(features.view(T * N, -1))
+        return output.view(T, N, -1)
 
 class CNN(nn.Module):
     def __init__(self, classes):
@@ -86,18 +92,17 @@ class CNN(nn.Module):
 
 class SeqClsMixin:
     def train_batch(self, frames, labels):
-        steps = frames.size(0)
-        batch_size = frames.size(1)
+        logits = self.model(frames)
+        steps, batch_size, _ = logits.size()
+        logits = logits.view(steps * batch_size, -1)
         labels = labels.repeat(steps) # T * B
-        logits = self.model(frames).view(steps * batch_size, -1)
         loss = nn.CrossEntropyLoss()(logits, labels)
         acc = accuracy(logits, labels)
         return dict(loss=loss, acc=acc)
 
     def predict_batch(self, frames, labels):
-        steps = frames.size(0)
-        batch_size = frames.size(1)
         logits = self.model(frames)
+        steps, batch_size, _ = logits.size()
         proba = F.softmax(logits, dim=-1)
         proba = torch.mean(proba, dim=0) # B * Classes
 

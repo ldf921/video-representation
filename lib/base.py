@@ -38,7 +38,7 @@ def load_network(net, path, name='module.'):
     net.load_state_dict(args_dict)
 
 def feature_extraction(model: nn.Module, input: torch.tensor) -> torch.tensor:
-    """ Extract features from intermediate layers using register_forward_hook
+    """ Extract features from intermediate layers
         Return dim [F * N * input_dim]
         Last frame is in accurate due to looping, proceed with caution
     Args:
@@ -46,24 +46,100 @@ def feature_extraction(model: nn.Module, input: torch.tensor) -> torch.tensor:
     """
     # Transform input [F * N * C * H * W] -> [(F * N) * C * H * W]
     F, N, C, H, W = input.size()
-    input = input.view(F * N, C, H, W)
-    # 3 features in total, each is [(F * N) * C_layer * H_layer * W_layer]
-    features = []
-    # Hook function for register_forward_hook
-    def hook(module, input, output):
-        _, C_layer, H_layer, W_layer = output.size()
-        features.append(output.view(F, N, C_layer, H_layer, W_layer))
-    # Hook it up
-    model.layer2[-1].register_forward_hook(hook)
-    model.layer3[-1].register_forward_hook(hook)
-    model.layer4[-1].register_forward_hook(hook)
-    model(input)
+    x = input.view(F * N, C, H, W)
+    
+    # In order to get intermidiate features, we cannot use forward hook since this gives parallel issues
+    for i, part in enumerate(model.children()):
+        x = part(x)
+        # 3 features in total, each is [(F * N) * C_layer * H_layer * W_layer]
+        # if i >= 5 and i <=7:
+        if i == 6:
+            # Shift output in F dimension, align each on with next frame
+            _, C_layer, H_layer, W_layer = x.size()
+            feature = x.view(F, N, C_layer, H_layer, W_layer)
+            next_feature = feature.roll(-1, dims=0)
+            # Sum over C dimension, view into [F * N * (H_layer * W_layer)]
+            # correlations.append(torch.sum(feature * next_feature, dim=2).view(F, N, -1))
+            x = feature * next_feature
+            x = x.view(F*N, C_layer, H_layer, W_layer)
+        elif i > 7:
+            break
+
+
+    # Cat and return
+    return x.view(F, N, -1)
+
+
+def one_kernel_feature_extraction(model: nn.Module, input: torch.tensor, D: int = 3) -> torch.tensor:
+    """ Extract features from intermediate layers
+        Return dim [F * N * input_dim]
+        Last frame is in accurate due to looping, proceed with caution
+    Args:
+        model (nn.Module): The model in question, Resnet 50
+    """
+    # Transform input [F * N * C * H * W] -> [(F * N) * C * H * W]
+    F, N, C, H, W = input.size()
+    x = input.view(F * N, C, H, W)
+    unfolder = nn.Unfold(kernel_size = D, padding=1)
     # Compute correlation
     correlations = []
-    for feature in features:
-        # Shift output in F dimension, align each on with next frame
-        next_feature = feature.roll(-1, dims=0)
-        # Sum over C dimension, view into [F * N * (H_layer * W_layer)]
-        correlations.append(torch.tensordot(feature, next_feature, dims=2).view(F, N, -1))
-    # Stack and return
-    return torch.stack(correlations, dim=2)
+    # In order to get intermidiate features, we cannot use forward hook since this gives parallel issues
+    for i, part in enumerate(model.children()):
+        x = part(x)
+        # 2 features in total, each is [(F * N) * C_layer * H_layer * W_layer]
+        if i == 6:
+            # Shift output in F dimension, align each on with next frame
+            _, C_layer, H_layer, W_layer = x.size()
+            feature = x.view(F, N, C_layer, H_layer, W_layer)
+            next_feature = feature.roll(-1, dims=0)
+            # Each feature perform inner product with a block of D^2
+            feature = feature.unsqueeze(dim=3)
+            feature = feature.repeat(1,1,1,D**2,1,1).view((F*N, -1, H_layer* W_layer))
+            next_feature = unfolder(next_feature.view(F*N, C_layer, H_layer, W_layer))
+            folder = nn.Fold(output_size = (H_layer, W_layer), kernel_size = D, padding = 1)
+            # print(feature.size(), next_feature.size())
+            x = folder(feature * next_feature)
+            # Sum over C dimension, view into [F * N * (H_layer * W_layer)]
+        elif i > 7:
+            break
+
+    # Cat and return
+    return x.view(F, N, -1)
+
+
+def kernel_feature_extraction(model: nn.Module, input: torch.tensor, D: int = 3) -> torch.tensor:
+    """ Extract features from intermediate layers
+        Return dim [F * N * input_dim]
+        Last frame is in accurate due to looping, proceed with caution
+    Args:
+        model (nn.Module): The model in question, Resnet 50
+    """
+    # Transform input [F * N * C * H * W] -> [(F * N) * C * H * W]
+    F, N, C, H, W = input.size()
+    x = input.view(F * N, C, H, W)
+    unfolder = nn.Unfold(kernel_size = D, padding=1)
+    # Compute correlation
+    correlations = []
+    # In order to get intermidiate features, we cannot use forward hook since this gives parallel issues
+    for i, part in enumerate(model.children()):
+        x = part(x)
+        # 2 features in total, each is [(F * N) * C_layer * H_layer * W_layer]
+        if i == 6:
+            # Shift output in F dimension, align each on with next frame
+            _, C_layer, H_layer, W_layer = x.size()
+            feature = x.view(F, N, C_layer, H_layer, W_layer)
+            next_feature = feature.roll(-1, dims=0)
+            # Each feature perform inner product with a block of D^2
+            feature = feature.unsqueeze(dim=3)
+            feature = feature.repeat(1,1,1,D**2,1,1).view((F*N, -1, H_layer* W_layer))
+            next_feature = unfolder(next_feature.view(F*N, C_layer, H_layer, W_layer))
+            folder = nn.Fold(output_size = (H_layer, W_layer), kernel_size = D, padding = 1)
+            # print(feature.size(), next_feature.size())
+            x = folder(feature * next_feature)
+            # Sum over C dimension, view into [F * N * (H_layer * W_layer)]
+        elif i > 7:
+            break
+
+    # Cat and return
+    return x.view(F, N, -1)
+

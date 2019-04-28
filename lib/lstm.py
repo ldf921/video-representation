@@ -5,7 +5,7 @@ import numpy as np
 from torch import nn
 from torchvision import models
 
-from .base import accuracy, time_distributed, feature_extraction
+from .base import accuracy, time_distributed, feature_extraction, one_kernel_feature_extraction
 from .framework import Framework
 from .video_data import dataset, sampler, transforms
 from typing import Tuple
@@ -157,18 +157,18 @@ class FrameCorrelationPredict(nn.Module):
         self.backbone = resnet
 
         # Construct LSTM
-        # Calculate LSTM input dimension 28^2 + 14^2 + 7^2 = 1029
-        input_dim = 1029
+        input_dim = 2048
         self.lstm_units = lstm_units
         self.lstm = nn.LSTM(input_dim, lstm_units)
         # Construct FC, input dimension (4 * lstm_unit)
         self.fc = nn.Sequential(
-                    nn.Linear((4 * lstm_unit), 100),
+                    nn.Linear((3 * lstm_units), 100),
                     nn.ReLU(),
                     nn.Linear(100, 2)
                     )
         self.register_buffer('pos', torch.LongTensor([1]))
         self.register_buffer('neg', torch.LongTensor([0]))
+
 
     def train(self, mode=True):
         for layer in self.children():
@@ -188,8 +188,8 @@ class FrameCorrelationPredict(nn.Module):
         Args:
             frames (torch.tensor): Input frames [F * N * C * H * W]
         """
-        # Get correlation features [F * N * 1029]
-        features = feature_extraction(frames)
+        # Get correlation features [F * N * 2048]
+        features = one_kernel_feature_extraction(self.backbone, frames)
         F, N, _ = features.size()
         # Note that our last frame feature is inaccurate due to looping
         # The idea is, the output of consecutive frames and skipping one frame should be different
@@ -197,11 +197,15 @@ class FrameCorrelationPredict(nn.Module):
         self.lstm.flatten_parameters()
         # Feed in [0, T] as context
         # I hate to do this but here we loop
-        h, c = torch.zeros((N, self.lstm_units)), torch.zeros((N, self.lstm_units))
+        # h, c = torch.zeros((1, N, self.lstm_units)), torch.zeros((1, N, self.lstm_units))
         first, second = [], []
         for t in range(T):
-            first_output, (h_next, c_next) = self.lstm(features.narrow(0, t, 1), (h, c))
-            second_output, _ = self.lstm(features.narrow(0, t, 1), (h, c))
+            if t == 0:
+                first_output, (h_next, c_next) = self.lstm(features.narrow(0, t, 1))
+                second_output, _ = self.lstm(features.narrow(0, t, 1))
+            else:
+                first_output, (h_next, c_next) = self.lstm(features.narrow(0, t, 1), (h, c))
+                second_output, _ = self.lstm(features.narrow(0, t, 1), (h, c))
             first.append(first_output)
             second.append(second_output)
             h, c = h_next, c_next
@@ -214,16 +218,16 @@ class FrameCorrelationPredict(nn.Module):
         engineered_features = []
         for i in range(2):
             j = 1 - i
+            # print(torch.cross(last_features[i], last_features[j]).size())
             engineer = torch.cat([  last_features[i],
                                     last_features[j],
-                                    last_features[i] - last_features[j],
-                                    torch.cross(last_features[i], last_features[j])], dim = -1)
+                                    last_features[i] - last_features[j]], dim = -1)
             engineered_features.append(engineer)
-        # Final features [T * (2 * N) * (4 * lstm_units)], can be seen as augmenting input
+        # Final features [T * (2 * N) * (3 * lstm_units)], can be seen as augmenting input
         final_features = torch.cat(engineered_features, dim = 1)
         predictions = self.fc(final_features.view(T*2*N, -1)).view(T, 2*N, 2)
         # Prepare labels
-        labels = torch.cat([self.pos.repeat(N), self.neg.repeat(N)]]  # [(2 * N)]
+        labels = torch.cat([self.pos.repeat(N), self.neg.repeat(N)])  # [(2 * N)]
         labels = labels.repeat(T, 1) # [T * (2 * N)]
         return predictions, labels
 
@@ -298,7 +302,6 @@ class SeqFramework(Framework):
     def valid(self):
         return self.evaluate(self.val_loader)
 
-
 class SeqPredFramework(Framework):
     def build_network(self):
         self.model = FramePredict(**self.config['network'])
@@ -322,3 +325,8 @@ class SeqPredFramework(Framework):
 
     def valid(self):
         return self.evaluate(self.val_loader)
+
+class CorrSeqPredFramework(SeqPredFramework):
+    def build_network(self):
+        self.model = FrameCorrelationPredict(**self.config['network'])
+
