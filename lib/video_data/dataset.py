@@ -4,6 +4,7 @@ import pickle as pkl
 import torch
 import numpy as np
 from PIL import Image
+import path
 
 class VideoList:
     def __init__(self, root, frames):
@@ -60,7 +61,7 @@ class VideoFeatureDataset(VideoDataset):
 
 
 def build_ucf101_dataset(split, transforms, length, stride, config):
-    data_root = 'data/UCF101'
+    data_root = path.UCF101_ROOT
     with open(os.path.join(data_root, '{}.pkl'.format(split)), 'rb') as fi:
         data = pkl.load(fi)
     if isinstance(data['frames'][0], tuple):
@@ -74,7 +75,7 @@ def build_ucf101_dataset(split, transforms, length, stride, config):
 
 
 def build_kinetics_dataset(split, transforms, length, stride, feature=False):
-    data_root = '/data/kinetics-400'
+    data_root = path.KINETICS_ROOT
     with open(os.path.join(data_root, '{}.pkl'.format(split)), 'rb') as fi:
         data = pkl.load(fi)
     frames = [VideoList(*d)for d in data['frames'] if d[1] > 0]

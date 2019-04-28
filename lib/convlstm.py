@@ -51,18 +51,19 @@ class CNN(nn.Module):
 
 class SeqClsMixin:
     def train_batch(self, frames, labels):
-        steps = frames.size(0)
-        batch_size = frames.size(1)
+        logits = self.model(frames)
+        steps, batch_size = logits.size()[:2]
+        logits = logits.view(steps * batch_size, -1)
+
         labels = labels.repeat(steps) # T * B
-        logits = self.model(frames).view(steps * batch_size, -1)
         loss = nn.CrossEntropyLoss()(logits, labels)
         acc = accuracy(logits, labels)
         return dict(loss=loss, acc=acc)
 
     def predict_batch(self, frames, labels):
-        steps = frames.size(0)
-        batch_size = frames.size(1)
         logits = self.model(frames)
+        steps, batch_size = logits.size()[:2]
+
         proba = F.softmax(logits, dim=-1)
         proba = torch.mean(proba, dim=0) # B * Classes
 
