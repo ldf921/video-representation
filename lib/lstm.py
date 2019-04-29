@@ -5,7 +5,7 @@ import numpy as np
 from torch import nn
 from torchvision import models
 
-from .base import accuracy, time_distributed, feature_extraction, one_kernel_feature_extraction
+from .base import *
 from .framework import Framework
 from .video_data import dataset, sampler, transforms
 from typing import Tuple
@@ -193,8 +193,13 @@ class FrameCorrelationPredict(nn.Module):
         self.lstm_units = lstm_units
         self.lstm = nn.LSTM(input_dim, lstm_units)
         # Construct FC, input dimension (4 * lstm_unit)
+        # self.fc = nn.Sequential(
+        #             nn.Linear((3 * lstm_units), 100),
+        #             nn.ReLU(),
+        #             nn.Linear(100, 2)
+        #             )
         self.fc = nn.Sequential(
-                    nn.Linear((3 * lstm_units), 100),
+                    nn.Linear(lstm_units, 100),
                     nn.ReLU(),
                     nn.Linear(100, 2)
                     )
@@ -221,42 +226,42 @@ class FrameCorrelationPredict(nn.Module):
             frames (torch.tensor): Input frames [F * N * C * H * W]
         """
         # Get correlation features [F * N * 2048]
-        features = one_kernel_feature_extraction(self.backbone, frames)
+        features, skipped_features = next_two_feature_extraction(self.backbone, frames)
         F, N, _ = features.size()
-        # Note that our last frame feature is inaccurate due to looping
+        # Note that our last 2 frame feature is inaccurate due to looping
         # The idea is, the output of consecutive frames and skipping one frame should be different
         T = F - 2
         self.lstm.flatten_parameters()
         # Feed in [0, T] as context
         # I hate to do this but here we loop
         # h, c = torch.zeros((1, N, self.lstm_units)), torch.zeros((1, N, self.lstm_units))
-        first, second = [], []
+        correct, wrong = [], []
         for t in range(T):
             if t == 0:
-                first_output, (h_next, c_next) = self.lstm(features.narrow(0, t, 1))
-                second_output, _ = self.lstm(features.narrow(0, t, 1))
+                wrong_output, _ = self.lstm(skipped_features.narrow(0, t, 1))
+                correct_output, (h, c) = self.lstm(features.narrow(0, t, 1))
             else:
-                first_output, (h_next, c_next) = self.lstm(features.narrow(0, t, 1), (h, c))
-                second_output, _ = self.lstm(features.narrow(0, t, 1), (h, c))
-            first.append(first_output)
-            second.append(second_output)
-            h, c = h_next, c_next
+                wrong_output, _ = self.lstm(skipped_features.narrow(0, t, 1), (h, c))
+                correct_output, (h, c) = self.lstm(features.narrow(0, t, 1), (h, c))
+            correct.append(correct_output)
+            wrong.append(wrong_output)
 
         # Each one is [T * N * hidden_size]
-        last_features = [torch.stack(first), torch.stack(second)]
+        last_features = [torch.cat(correct), torch.cat(wrong)]
         # Basic feature engineering, key notion is to choose asymmetrical operations
-        # Engineer result is [T * N * (4 * lstm_unit)]
-        # Construct features [first, second] and [second first], we'll set labels accordingly
-        engineered_features = []
-        for i in range(2):
-            j = 1 - i
-            # print(torch.cross(last_features[i], last_features[j]).size())
-            engineer = torch.cat([  last_features[i],
-                                    last_features[j],
-                                    last_features[i] - last_features[j]], dim = -1)
-            engineered_features.append(engineer)
-        # Final features [T * (2 * N) * (3 * lstm_units)], can be seen as augmenting input
-        final_features = torch.cat(engineered_features, dim = 1)
+        # Engineer result is [T * N * (3 * lstm_unit)]
+        # Construct features [second, third] and [third second], we'll set labels accordingly
+        # engineered_features = []
+        # for i in range(2):
+        #     j = 1 - i
+        #     # print(torch.cross(last_features[i], last_features[j]).size())
+        #     engineer = torch.cat([  last_features[i],
+        #                             last_features[j],
+        #                             last_features[i] - last_features[j]], dim = -1)
+        #     engineered_features.append(engineer)
+        # # Final features [T * (2 * N) * (3 * lstm_units)], can be seen as augmenting input
+        # final_features = torch.cat(engineered_features, dim = 1)
+        final_features = torch.cat(last_features, dim=1)
         predictions = self.fc(final_features.view(T*2*N, -1)).view(T, 2*N, 2)
         # Prepare labels
         labels = torch.cat([self.pos.repeat(N), self.neg.repeat(N)])  # [(2 * N)]
@@ -435,7 +440,7 @@ class SeqPredFramework(Framework):
 
 class CorrSeqPredFramework(SeqPredFramework):
     def build_network(self):
-        self.model = FrameCorrelationFeaturePredict(**self.config['network'])
+        self.model = FrameCorrelationPredict(**self.config['network'])
 
 class CorrFramePredFramework(SeqFramework):
     def build_network(self):
