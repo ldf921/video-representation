@@ -8,7 +8,7 @@ import yaml
 
 from lib.convlstm import ConvLSTMFramework, CNNFramework, CorrelationLSTMFramework
 from lib.base import load_network
-from lib.lstm import SeqFramework, SeqPredFramework, CorrSeqPredFramework
+from lib.lstm import SeqFramework, SeqPredFramework, CorrSeqPredFramework, CorrFramePredFramework
 from lib.stackcnn import stackcl_framework
 
 
@@ -58,6 +58,9 @@ elif config['framework'] == 'corrlstm':
 elif config['framework'] == 'corrseq':
     print("Using Correlation LSTM for order prediction")
     framework = CorrSeqPredFramework(config)
+elif config['framework'] == 'corrframe':
+    print("Using Correlation LSTM for frame prediction")
+    framework = CorrFramePredFramework(config)
 
 CP_ROOT = 'checkpoints'
 if args.test is not None:
