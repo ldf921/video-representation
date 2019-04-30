@@ -136,7 +136,7 @@ def next_two_feature_extraction(model: nn.Module, input: torch.tensor, D: int = 
             next_two_features = unfolder(next_two_features)
             next_two_features = feature * next_two_features
             # Return tensor [2FN * D^2 * H * W], first FN is next_feature, second FN is skipped_feature
-            return torch.sum(next_two_features.view(2*F*N, C_layer, D**2, H_layer, W_layer), dim=1)
+            return torch.sum(next_two_features.view(2*F*N, C_layer, D**2, H_layer, W_layer), dim=1), F, N
 
 
             

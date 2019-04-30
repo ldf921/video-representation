@@ -6,6 +6,7 @@ from torch import nn
 from torchvision import models
 
 from .base import *
+from .corrnet import CorrNet
 from .framework import Framework
 from .video_data import dataset, sampler, transforms
 from typing import Tuple
@@ -188,8 +189,11 @@ class FrameCorrelationPredict(nn.Module):
         self.train_backbone = train_backbone
         self.backbone = resnet
 
+        self.D = 7
+        self.corrnet = CorrNet(self.D**2)
+
         # Construct LSTM
-        input_dim = 2048
+        input_dim = 512
         self.lstm_units = lstm_units
         self.lstm = nn.LSTM(input_dim, lstm_units)
         # Construct FC, input dimension (4 * lstm_unit)
@@ -226,8 +230,10 @@ class FrameCorrelationPredict(nn.Module):
             frames (torch.tensor): Input frames [F * N * C * H * W]
         """
         # Get correlation features [F * N * 2048]
-        features, skipped_features = next_two_feature_extraction(self.backbone, frames)
-        F, N, _ = features.size()
+        feature_map, F, N = next_two_feature_extraction(self.backbone, frames, self.D, (self.D -1)//2)
+        f = self.corrnet(feature_map)
+        features = f.narrow(0 ,0, F*N).view(F, N, -1)
+        skipped_features = f.narrow(0 ,F*N, F*N).view(F, N, -1)
         # Note that our last 2 frame feature is inaccurate due to looping
         # The idea is, the output of consecutive frames and skipping one frame should be different
         T = F - 2
