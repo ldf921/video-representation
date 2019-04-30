@@ -197,18 +197,19 @@ class FrameCorrelationPredict(nn.Module):
         self.lstm_units = lstm_units
         self.lstm = nn.LSTM(input_dim, lstm_units)
         # Construct FC, input dimension (4 * lstm_unit)
-        # self.fc = nn.Sequential(
-        #             nn.Linear((3 * lstm_units), 100),
-        #             nn.ReLU(),
-        #             nn.Linear(100, 2)
-        #             )
         self.fc = nn.Sequential(
-                    nn.Linear(lstm_units, 100),
+                    nn.Linear((2 * lstm_units), 100),
                     nn.ReLU(),
                     nn.Linear(100, 2)
                     )
-        self.register_buffer('pos', torch.LongTensor([1]))
-        self.register_buffer('neg', torch.LongTensor([0]))
+        # self.fc = nn.Sequential(
+        #             nn.Linear(lstm_units, 100),
+        #             nn.ReLU(),
+        #             nn.Linear(100, 2)
+        #             )
+        self.register_buffer('label', torch.LongTensor([1, 0]))
+        # self.register_buffer('pos', torch.LongTensor([1]))
+        # self.register_buffer('neg', torch.LongTensor([0]))
 
 
     def train(self, mode=True):
@@ -257,21 +258,20 @@ class FrameCorrelationPredict(nn.Module):
         # Basic feature engineering, key notion is to choose asymmetrical operations
         # Engineer result is [T * N * (3 * lstm_unit)]
         # Construct features [second, third] and [third second], we'll set labels accordingly
-        # engineered_features = []
-        # for i in range(2):
-        #     j = 1 - i
-        #     # print(torch.cross(last_features[i], last_features[j]).size())
-        #     engineer = torch.cat([  last_features[i],
-        #                             last_features[j],
-        #                             last_features[i] - last_features[j]], dim = -1)
-        #     engineered_features.append(engineer)
-        # # Final features [T * (2 * N) * (3 * lstm_units)], can be seen as augmenting input
-        # final_features = torch.cat(engineered_features, dim = 1)
-        final_features = torch.cat(last_features, dim=1)
+        engineered_features = []
+        for i in range(2):
+            j = 1 - i
+            engineer = torch.cat([  last_features[i],
+                                    last_features[j]], dim = -1)
+            engineered_features.append(engineer)
+        # Final features [T * (2 * N) * (3 * lstm_units)], can be seen as augmenting input
+        final_features = torch.cat(engineered_features, dim = -1)
+        # final_features = torch.cat(last_features, dim=-11)
         predictions = self.fc(final_features.view(T*2*N, -1)).view(T, 2*N, 2)
         # Prepare labels
-        labels = torch.cat([self.pos.repeat(N), self.neg.repeat(N)])  # [(2 * N)]
-        labels = labels.repeat(T, 1) # [T * (2 * N)]
+        # labels = torch.cat([self.pos.repeat(N), self.neg.repeat(N)])  # [(2 * N)]
+        # labels = labels.repeat(T, 1) # [T * (2 * N)]
+        labels = self.label.repeat(T, N, 1).view(T, N * 2)
         return predictions, labels
 
 class FrameCorrelationFeaturePredict(nn.Module):

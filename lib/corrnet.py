@@ -1,6 +1,12 @@
 from torchvision.models import resnet
 from torch import nn
 
+class Fake(nn.Module):
+    def __init__(self, x):
+        super().__init__()
+
+    def forward(self, x):
+        return x
 
 class CorrNet(resnet.ResNet):
     '''post-process correlation feature maps
@@ -11,12 +17,13 @@ class CorrNet(resnet.ResNet):
         planes : number of channels in this network
         '''
         super(resnet.ResNet, self).__init__()
+        self._norm_layer = Fake
         self.conv1 = resnet.conv3x3(inplanes, planes, stride=1)
-        self.bn1 = nn.BatchNorm2d(planes)
+        self.bn1 = self._norm_layer(planes)
         self.relu = nn.ReLU(inplace=True)
 
         block = resnet.BasicBlock
-        self._norm_layer = nn.BatchNorm2d
+        
         self.inplanes = planes
         self.layer1 = self._make_layer(block, planes, 2)
         self.layer2 = self._make_layer(block, planes * 2, 2, stride=2)
