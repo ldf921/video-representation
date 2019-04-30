@@ -106,7 +106,7 @@ def one_kernel_feature_extraction(model: nn.Module, input: torch.tensor, D: int 
     # Cat and return
     return x.view(F, N, -1)
 
-def next_two_feature_extraction(model: nn.Module, input: torch.tensor, D: int = 3) -> torch.tensor:
+def next_two_feature_extraction(model: nn.Module, input: torch.tensor, D: int = 3, padding: int = 1, stride: int = 1) -> torch.tensor:
     """ Extract features from intermediate layers
         Return dim [F * N * input_dim]
         Last frame is in accurate due to looping, proceed with caution
@@ -116,7 +116,7 @@ def next_two_feature_extraction(model: nn.Module, input: torch.tensor, D: int = 
     # Transform input [F * N * C * H * W] -> [(F * N) * C * H * W]
     F, N, C, H, W = input.size()
     x = input.view(F * N, C, H, W)
-    unfolder = nn.Unfold(kernel_size = D, padding=1)
+    unfolder = nn.Unfold(kernel_size = D, padding=padding, stride=stride)
 
     # In order to get intermidiate features, we cannot use forward hook since this gives parallel issues
     for i, part in enumerate(model.children()):
@@ -126,22 +126,21 @@ def next_two_feature_extraction(model: nn.Module, input: torch.tensor, D: int = 
             # Shift output in F dimension, align each on with next frame
             _, C_layer, H_layer, W_layer = x.size()
             feature = x.view(F, N, C_layer, H_layer, W_layer)
-            next_feature = feature.roll(-1, dims=0)
-            skipped_feature = feature.roll(-2, dims=0)
+            next_feature = feature.roll(-1, dims=0).view(F*N, C_layer, H_layer, W_layer)
+            skipped_feature = feature.roll(-2, dims=0).view(F*N, C_layer, H_layer, W_layer)
+            next_two_features = torch.cat([next_feature, skipped_feature])
             # Each feature perform inner product with a block of D^2
             feature = feature.unsqueeze(dim=3)
-            feature = feature.repeat(1,1,1,D**2,1,1).view((F*N, -1, H_layer* W_layer))
-            next_feature = unfolder(next_feature.view(F*N, C_layer, H_layer, W_layer))
-            skipped_feature = unfolder(skipped_feature.view(F*N, C_layer, H_layer, W_layer))
-            folder = nn.Fold(output_size = (H_layer, W_layer), kernel_size = D, padding = 1)
-            next_feature = folder(feature * next_feature)
-            skipped_feature = folder(feature * skipped_feature)
-            x = torch.cat(next_feature, skipped_feature)
-        elif i > 7:
-            break
+            feature = feature.repeat(1,1,1,D**2,1,1).view(F*N, -1, H_layer* W_layer)
+            feature = feature.repeat(2,1,1)
+            next_two_features = unfolder(next_two_features)
+            next_two_features = feature * next_two_features
+            # Return tensor [2FN * D^2 * H * W], first FN is next_feature, second FN is skipped_feature
+            return torch.sum(next_two_features.view(2*F*N, C_layer, D**2, H_layer, W_layer), dim=1)
 
-    next_feature, skipped_feature = x.narrow(0, 0, F*N), x.narrow(0, F*N, F*N)
-    return next_feature.view(F, N, -1), skipped_feature.view(F, N, -1)
+
+            
+        
 
 
 def kernel_feature_extraction(model: nn.Module, input: torch.tensor, D: int = 3) -> torch.tensor:
