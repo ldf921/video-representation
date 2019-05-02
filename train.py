@@ -7,6 +7,7 @@ import torch
 import yaml
 
 from lib.convlstm import ConvLSTMFramework, CNNFramework
+from lib.voxelflow import VoxelFlowFramework, VoxelFlowFrameworkClassification
 from lib.base import load_network
 from lib.lstm import SeqFramework, SeqPredFramework
 from lib.stackcnn import stackcl_framework
@@ -54,6 +55,10 @@ elif config['framework'] == 'seqpred':
     framework = SeqPredFramework(config)
 elif config['framework'].startswith('stackcl'):
     framework = stackcl_framework(config)
+elif config['framework'] == 'voxelflow':
+    framework = VoxelFlowFramework(config)
+elif config['framework'] == 'voxelflow_class':
+    framework = VoxelFlowFrameworkClassification(config)
 
 CP_ROOT = 'checkpoints'
 if args.test is not None:
