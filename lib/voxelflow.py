@@ -16,9 +16,6 @@ class VoxelFlowFramework(SeqPredFramework):
     def train_batch(self, features, labels):
         steps = features.size(0)
         truth, pred = self.model(features)
-        # x = truth - pred
-        # epsilon = 0.001
-        # loss = (x**2 + epsilon**2)**0.5
         loss = nn.MSELoss()(truth, pred)
         # logits = logits.view(-1, logits.size(2))
         # labels = labels.view(-1)
@@ -32,6 +29,7 @@ class VoxelFlowFrameworkClassification(SeqClsMixin, Framework):
     def build_network(self):
         self.model = VoxelFlow(classification=True, classes=self.classes, **self.config['network'])
         load_network(self.model, self.config['checkpoint'], strict=False)
+
 
 def meshgrid(height, width):
     x_t = torch.matmul(
