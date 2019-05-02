@@ -106,7 +106,7 @@ def test(framework):
     if config['framework'] == 'voxelflow':
         results = framework.predict(generator_k(1, framework.val_loader))
         saveimg(results['truth'], results['pred'], os.path.join(exp_dir, 'vis.jpg'), n=10)
-        print(((resutls['truth'] - results['pred']) ** 2).mean())
+        print(((results['truth'] - results['pred']) ** 2).mean())
     for subset in args.test:
         data, loader = framework.build_test_dataset(subset)
         result = framework.test(data, loader)
