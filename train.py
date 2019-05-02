@@ -91,9 +91,18 @@ def train(framework):
             print(msg, file=flog)
             flog.flush()
 
+def generator_k(k, loader):
+    for i, data in enumerate(loader):
+        if i > k:
+            break
+        yield data
+
 def test(framework):
     load_network(framework.model, os.path.join(exp_dir, args.checkpoint))
     framework.cuda()
+    if config['framework'] == 'voxelflow':
+        results = framework.predict(generator_k(20, framework.val_loader))
+        for results
     for subset in args.test:
         data, loader = framework.build_test_dataset(subset)
         result = framework.test(data, loader)
