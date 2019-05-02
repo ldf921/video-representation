@@ -7,7 +7,7 @@ import torch
 import yaml
 
 from lib.convlstm import ConvLSTMFramework, CNNFramework
-from lib.voxelflow import VoxelFlowFramework
+from lib.voxelflow import VoxelFlowFramework, VoxelFlowFrameworkClassification
 from lib.base import load_network
 from lib.lstm import SeqFramework, SeqPredFramework
 from lib.stackcnn import stackcl_framework
@@ -57,7 +57,9 @@ elif config['framework'].startswith('stackcl'):
     framework = stackcl_framework(config)
 elif config['framework'] == 'voxelflow':
     framework = VoxelFlowFramework(config)
-
+elif config['framework'] == 'voxelflow_class':
+    framework = VoxelFlowFrameworkClassification(config)
+    
 CP_ROOT = 'checkpoints'
 if args.test is not None:
     exp_dir = os.path.dirname(args.config)
@@ -91,9 +93,20 @@ def train(framework):
             print(msg, file=flog)
             flog.flush()
 
+def generator_k(k, loader):
+    for i, data in enumerate(loader):
+        if i > k:
+            break
+        yield data
+
 def test(framework):
+    from utils import saveimg
     load_network(framework.model, os.path.join(exp_dir, args.checkpoint))
     framework.cuda()
+    if config['framework'] == 'voxelflow':
+        results = framework.predict(generator_k(1, framework.val_loader))
+        saveimg(results['truth'], results['pred'], os.path.join(exp_dir, 'vis.jpg'), n=10)
+        print(((results['truth'] - results['pred']) ** 2).mean())
     for subset in args.test:
         data, loader = framework.build_test_dataset(subset)
         result = framework.test(data, loader)

@@ -27,6 +27,11 @@ class VoxelFlowFramework(SeqPredFramework):
     def build_network(self):
         self.model = VoxelFlow(**self.config['network']) 
 
+    def predict_batch(self, features, labels):
+        steps = features.size(0)
+        truth, pred = self.model(features)
+        return dict(truth=truth, pred=pred)
+
 class VoxelFlowFrameworkClassification(SeqClsMixin, Framework):
     def build_network(self):
         self.model = VoxelFlow(classification=True, classes=self.classes, **self.config['network'])
