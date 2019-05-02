@@ -10,6 +10,7 @@ from torch.nn import BatchNorm2d
 from .base import accuracy, time_distributed, load_network
 from .framework import Framework
 from .lstm import SeqPredFramework
+from .convlstm import SeqClsMixin
 
 class VoxelFlowFramework(SeqPredFramework):
     def train_batch(self, features, labels):
@@ -24,6 +25,12 @@ class VoxelFlowFramework(SeqPredFramework):
     def build_network(self):
         self.model = VoxelFlow(**self.config['network']) 
 
+class VoxelFlowFrameworkClassification(SeqClsMixin, Framework):
+    def build_network(self):
+        self.model = VoxelFlow(classification=True, classes=self.classes, **self.config['network'])
+        load_network(self.model, self.config['checkpoint'], strict=False)
+
+
 def meshgrid(height, width):
     x_t = torch.matmul(
         torch.ones(height, 1), torch.linspace(-1.0, 1.0, width).view(1, width))
@@ -37,11 +44,13 @@ def meshgrid(height, width):
 
 class VoxelFlow(nn.Module):
 
-    def __init__(self, syn_type='inter'):
+    def __init__(self, syn_type='inter', classification=False, classes=None):
         super().__init__()
         self.syn_type = syn_type
         self.input_mean = [0.5 * 255, 0.5 * 255, 0.5 * 255]
         self.input_std = [0.5 * 255, 0.5 * 255, 0.5 * 255]
+        self.classification = classification
+        self.classes = classes
 
         # self.syn_type = config.syn_type
 
@@ -77,6 +86,10 @@ class VoxelFlow(nn.Module):
         self.deconv3_bn = BatchNorm2d(64)
 
         self.conv4 = nn.Conv2d(64, 3, kernel_size=5, stride=1, padding=2)
+
+        if (classification):
+            self.avg_pool = nn.AdaptiveAvgPool2d((1,1))
+            self.linear = nn.Linear(256, classes)
 
         for m in self.modules():
             if isinstance(m, nn.Conv2d):
@@ -122,6 +135,12 @@ class VoxelFlow(nn.Module):
         x = self.bottleneck(x)
         x = self.bottleneck_bn(x)
         x = self.relu(x)
+
+        if (self.classification):
+            # return here
+            x = self.avg_pool(x).view(x.size(0), -1)
+            out_class = torch.unsqueeze(self.linear(x), 0)
+            return out_class
 
         x = nn.functional.upsample(
             x, scale_factor=2, mode='bilinear', align_corners=False)
