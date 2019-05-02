@@ -7,11 +7,7 @@ import torch
 import yaml
 
 from lib.convlstm import ConvLSTMFramework, CNNFramework
-<<<<<<< HEAD
 from lib.voxelflow import VoxelFlowFramework, VoxelFlowFrameworkClassification
-=======
-from lib.voxelflow import VoxelFlowFramework
->>>>>>> 489623524b1c7c42368e27259aa82076d4b58dd7
 from lib.base import load_network
 from lib.lstm import SeqFramework, SeqPredFramework
 from lib.stackcnn import stackcl_framework
@@ -104,11 +100,13 @@ def generator_k(k, loader):
         yield data
 
 def test(framework):
+    from utils import saveimg
     load_network(framework.model, os.path.join(exp_dir, args.checkpoint))
     framework.cuda()
     if config['framework'] == 'voxelflow':
-        results = framework.predict(generator_k(20, framework.val_loader))
-        for results
+        results = framework.predict(generator_k(1, framework.val_loader))
+        saveimg(results['truth'], results['pred'], os.path.join(exp_dir, 'vis.jpg'), n=10)
+        print(((resutls['truth'] - results['pred']) ** 2).mean())
     for subset in args.test:
         data, loader = framework.build_test_dataset(subset)
         result = framework.test(data, loader)
