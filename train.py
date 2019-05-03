@@ -22,6 +22,7 @@ parser.add_argument('-p', '--print_freq', type=int, default=100)
 parser.add_argument('-n', '--num_epochs', type=int, default=20)
 parser.add_argument('-b', '--batch_size', type=int, default=8)
 parser.add_argument('-t', '--num_worker', type=int, default=4)
+parser.add_argument('--resume', action='store_true')
 
 args = parser.parse_args()
 with open(args.config + '.yaml', 'r') as fi:
@@ -45,6 +46,12 @@ if args.suffix is not None:
         else:
             print('Suffix', arg)
 
+if args.test:
+    network_args = config.get('network', dict())
+    for k in list(network_args.keys()):
+        if k.startswith('load'):
+            print('removing {} {}'.format(k, network_args.pop(k)))
+
 print(config['framework'])
 if config['framework'] == 'convlstm':
     framework = ConvLSTMFramework(config)
@@ -60,9 +67,9 @@ elif config['framework'] == 'voxelflow':
     framework = VoxelFlowFramework(config)
 elif config['framework'] == 'voxelflow_class':
     framework = VoxelFlowFrameworkClassification(config)
-    
+
 CP_ROOT = 'checkpoints'
-if args.test is not None:
+if args.test is not None or args.resume:
     exp_dir = os.path.dirname(args.config)
 else:
     exp_dir = os.path.join(CP_ROOT, args.config.replace('config/', ''))
@@ -82,9 +89,14 @@ def print_dict(metrics, prefix):
     return msg
 
 def train(framework):
+    start = 1
+    if args.resume:
+        load_network(framework.model, os.path.join(exp_dir, args.checkpoint))
+        start = int(os.path.splitext(args.checkpoint)[0]) + 1
+        print(exp_dir, ' resuming from ', args.checkpoint)
     framework.cuda()
     with open(os.path.join(exp_dir, 'log'), 'a') as flog:
-        for epoch in range(1, args.num_epochs + 1):
+        for epoch in range(start, args.num_epochs + 1):
             train_result = framework.train_epoch(epoch)
             save(framework, epoch)
             val_result = framework.valid()

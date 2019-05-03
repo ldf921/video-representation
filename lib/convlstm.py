@@ -11,10 +11,15 @@ from .framework import Framework
 
 
 class ConvLSTM(nn.Module):
-    def __init__(self, classes, lstm_units, sync_bn=False, load_lstm=None, load_backbone=None):
+    def __init__(self, classes, lstm_units, pool='avgpool', pretrain=True, sync_bn=False, load_lstm=None, load_backbone=None):
         super().__init__()
-        resnet = models.resnet50(pretrained=True)
+        resnet = models.resnet50(pretrained=pretrain)
         in_planes = resnet.fc.in_features
+        if pool == 'groupconv':
+            resnet.avgpool = nn.Sequential(
+                nn.Conv2d(in_planes, in_planes, (7, 7), groups=32, bias=False)
+                )
+            print('Using group conv for pooling')
         resnet.fc = nn.Sequential()
         if load_backbone is not None:
             load_network(resnet, load_backbone, 'module.backbone.')
