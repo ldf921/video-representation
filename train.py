@@ -44,6 +44,7 @@ if args.suffix is not None:
         else:
             print('Suffix', arg)
 
+print(config['framework'])
 if config['framework'] == 'convlstm':
     framework = ConvLSTMFramework(config)
 elif config['framework'] == 'cnn':
