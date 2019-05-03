@@ -52,13 +52,13 @@ class ConvLSTM(nn.Module):
             print('Fixing resnet in evaluation mode')
 
     def forward(self, frames):
-        steps = features.size(0)
-        batch_size = features.size(1)
+        steps = frames.size(0)
+        batch_size = frames.size(1)
         self.lstm.flatten_parameters()
 
-        features = time_distributed(self.backbone(frames))
+        features = time_distributed(self.backbone, frames)
         out_features, _ = self.lstm(features.narrow(0, 0, steps - 1))
-        out_features = self.fc(out_features.view((steps - 1) * batch_size, -1)).view(steps - 1, batch_size, -1)
+        out_features = time_distributed(self.fc, out_features)
         return out_features, features
 
 
