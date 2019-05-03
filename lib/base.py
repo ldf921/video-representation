@@ -70,7 +70,7 @@ def feature_extraction(model: nn.Module, input: torch.tensor) -> torch.tensor:
     return x.view(F, N, -1)
 
 
-def one_kernel_feature_extraction(model: nn.Module, input: torch.tensor, D: int = 3) -> torch.tensor:
+def one_kernel_feature_extraction(model: nn.Module, input: torch.tensor, D: int = 3, padding: int = 1, stride: int = 1) -> torch.tensor:
     """ Extract features from intermediate layers
         Return dim [F * N * input_dim]
         Last frame is in accurate due to looping, proceed with caution
@@ -80,7 +80,7 @@ def one_kernel_feature_extraction(model: nn.Module, input: torch.tensor, D: int 
     # Transform input [F * N * C * H * W] -> [(F * N) * C * H * W]
     F, N, C, H, W = input.size()
     x = input.view(F * N, C, H, W)
-    unfolder = nn.Unfold(kernel_size = D, padding=1)
+    unfolder = nn.Unfold(kernel_size = D, padding=padding, stride=stride)
     # Compute correlation
     correlations = []
     # In order to get intermidiate features, we cannot use forward hook since this gives parallel issues
@@ -138,12 +138,7 @@ def next_two_feature_extraction(model: nn.Module, input: torch.tensor, D: int = 
             # Return tensor [2FN * D^2 * H * W], first FN is next_feature, second FN is skipped_feature
             return torch.sum(next_two_features.view(2*F*N, C_layer, D**2, H_layer, W_layer), dim=1), F, N
 
-
-            
-        
-
-
-def kernel_feature_extraction(model: nn.Module, input: torch.tensor, D: int = 3) -> torch.tensor:
+def next_feature_extraction(model: nn.Module, input: torch.tensor, D: int = 3, padding: int = 1, stride: int = 1) -> torch.tensor:
     """ Extract features from intermediate layers
         Return dim [F * N * input_dim]
         Last frame is in accurate due to looping, proceed with caution
@@ -153,29 +148,23 @@ def kernel_feature_extraction(model: nn.Module, input: torch.tensor, D: int = 3)
     # Transform input [F * N * C * H * W] -> [(F * N) * C * H * W]
     F, N, C, H, W = input.size()
     x = input.view(F * N, C, H, W)
-    unfolder = nn.Unfold(kernel_size = D, padding=1)
-    # Compute correlation
-    correlations = []
+    unfolder = nn.Unfold(kernel_size = D, padding=padding, stride=stride)
+
     # In order to get intermidiate features, we cannot use forward hook since this gives parallel issues
+    next_feature = None
     for i, part in enumerate(model.children()):
         x = part(x)
-        # 2 features in total, each is [(F * N) * C_layer * H_layer * W_layer]
         if i == 6:
             # Shift output in F dimension, align each on with next frame
             _, C_layer, H_layer, W_layer = x.size()
             feature = x.view(F, N, C_layer, H_layer, W_layer)
-            next_feature = feature.roll(-1, dims=0)
+            next_feature = feature.roll(-1, dims=0).view(F*N, C_layer, H_layer, W_layer)
             # Each feature perform inner product with a block of D^2
-            feature = feature.unsqueeze(dim=3)
-            feature = feature.repeat(1,1,1,D**2,1,1).view((F*N, -1, H_layer* W_layer))
-            next_feature = unfolder(next_feature.view(F*N, C_layer, H_layer, W_layer))
-            folder = nn.Fold(output_size = (H_layer, W_layer), kernel_size = D, padding = 1)
-            # print(feature.size(), next_feature.size())
-            x = folder(feature * next_feature)
-            # Sum over C dimension, view into [F * N * (H_layer * W_layer)]
-        elif i > 7:
-            break
-
-    # Cat and return
-    return x.view(F, N, -1)
-
+            unfold_feature = feature.unsqueeze(dim=3)
+            unfold_feature = unfold_feature.repeat(1,1,1,D**2,1,1).view(F*N, -1, H_layer* W_layer)
+            next_feature = unfolder(next_feature)
+            next_feature = unfold_feature * next_feature
+            # Return tensor [FN * D^2 * H * W]
+            next_feature = torch.sum(next_feature.view(F*N, C_layer, D**2, H_layer, W_layer), dim=1)
+        elif i == 8:
+            return next_feature, x,  F, N

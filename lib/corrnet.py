@@ -17,7 +17,7 @@ class CorrNet(resnet.ResNet):
         planes : number of channels in this network
         '''
         super(resnet.ResNet, self).__init__()
-        self._norm_layer = Fake
+        self._norm_layer = nn.BatchNorm2d
         self.conv1 = resnet.conv3x3(inplanes, planes, stride=1)
         self.bn1 = self._norm_layer(planes)
         self.relu = nn.ReLU(inplace=True)

@@ -164,10 +164,13 @@ class Framework:
                 for k, v in metrics.items():
                     print('{key} {val.avg:.3f}'.format(key=k, val=v), end='\t')
                 print()
+            # if i > 200:
+            #     break
 
         metrics.pop('batch_time')
         metrics.pop('data_time')
         return {k : v.avg for k, v in metrics.items()}
+        
 
 
     def predict(self, dataloader):

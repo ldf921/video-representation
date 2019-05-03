@@ -6,12 +6,13 @@ from torch import nn
 from torchvision import models
 from sync_batchnorm import convert_model
 
-from .base import accuracy, time_distributed, load_network, feature_extraction, kernel_feature_extraction, one_kernel_feature_extraction
+from .base import*
+from .corrnet import CorrNet
 from .framework import Framework
 
 
 class ConvLSTM(nn.Module):
-    def __init__(self, classes, lstm_units, sync_bn=False, load_lstm=None, load_backbone=None):
+    def __init__(self, classes, lstm_units, sync_bn=False, load_lstm=None, load_backbone=None, train_backbone=True):
         super().__init__()
         resnet = models.resnet50(pretrained=True)
         in_planes = resnet.fc.in_features
@@ -21,6 +22,8 @@ class ConvLSTM(nn.Module):
         if sync_bn:
             print('Convert model using sync bn')
             resnet = convert_model(resnet)
+        for param in resnet.parameters():
+            param.requires_grad = train_backbone
         self.backbone = resnet
 
         self.lstm = nn.LSTM(in_planes, lstm_units)
@@ -36,7 +39,7 @@ class ConvLSTM(nn.Module):
 
 class CorrelationLSTM(nn.Module):
 
-    def __init__(self, classes, lstm_units, load_lstm=None, load_backbone=None):
+    def __init__(self, classes, lstm_units, load_lstm=None, load_backbone=None, train_backbone=False, load_corr=None):
         """ Construct a CNN-LSTM that computes correlation of last 3 layer of ResNet on consequtive frames.
             [F * N * C * H * W] [F * N * C * H * W] -> [F * N * H * W]
             Each frame is encoded into 28^2 + 14^2 + 7^2 = 1029
@@ -52,10 +55,18 @@ class CorrelationLSTM(nn.Module):
         resnet = models.resnet50(pretrained=True)
         if load_backbone is not None:
             load_network(resnet, load_backbone, 'module.backbone.')
+        for param in resnet.parameters():
+            param.requires_grad = train_backbone
+        resnet.fc = nn.Sequential()
         self.backbone = resnet
+        self.D = 7
+        self.corrnet = CorrNet(self.D**2)
+        if load_corr is not None:
+            load_network(self.corrnet, load_corr, "module.corrnet.")
 
         # Construct LSTM
-        input_dim = 2048
+        # input_dim = 512
+        input_dim = 2048 + 512
         self.lstm = nn.LSTM(input_dim, lstm_units)
         if load_lstm is not None:
             load_network(self.lstm, load_lstm, 'module.lstm.')
@@ -66,10 +77,9 @@ class CorrelationLSTM(nn.Module):
         
     def forward(self, frames):
         self.lstm.flatten_parameters()
-        # features = feature_extraction(self.backbone, frames)
-        features = one_kernel_feature_extraction(self.backbone, frames)
-        F, N, _ = features.size()
-        # T = F - 1
+        feature_map, x, F, N = next_feature_extraction(self.backbone, frames, self.D, (self.D -1)//2)
+        features = self.corrnet(feature_map)
+        features = torch.cat([features.view(F, N, -1), x.view(F, N, -1)], dim=-1)
         T = F - 1
         features = features.narrow(0, 0, T)
         features, _ = self.lstm(features)
