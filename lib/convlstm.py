@@ -6,12 +6,13 @@ from torch import nn
 from torchvision import models
 from sync_batchnorm import convert_model
 
-from .base import accuracy, time_distributed, load_network
+from .base import*
+from .corrnet import CorrNet
 from .framework import Framework
 
 
 class ConvLSTM(nn.Module):
-    def __init__(self, classes, lstm_units, pool='avgpool', pretrain=True, sync_bn=False, load_lstm=None, load_backbone=None):
+    def __init__(self, classes, lstm_units, pool='avgpool', pretrain=True, sync_bn=False, load_lstm=None, load_backbone=None, train_backbone=True):
         super().__init__()
         resnet = models.resnet50(pretrained=pretrain)
         in_planes = resnet.fc.in_features
@@ -26,6 +27,8 @@ class ConvLSTM(nn.Module):
         if sync_bn:
             print('Convert model using sync bn')
             resnet = convert_model(resnet)
+        for param in resnet.parameters():
+            param.requires_grad = train_backbone
         self.backbone = resnet
 
         self.lstm = nn.LSTM(in_planes, lstm_units)
@@ -39,6 +42,54 @@ class ConvLSTM(nn.Module):
         features, _ = self.lstm(features)
         return time_distributed(self.fc, features)
 
+class CorrelationLSTM(nn.Module):
+
+    def __init__(self, classes, lstm_units, load_lstm=None, load_backbone=None, train_backbone=False, load_corr=None):
+        """ Construct a CNN-LSTM that computes correlation of last 3 layer of ResNet on consequtive frames.
+            [F * N * C * H * W] [F * N * C * H * W] -> [F * N * H * W]
+            Each frame is encoded into 28^2 + 14^2 + 7^2 = 1029
+        
+        Args:
+            classes (int): number of classes
+            lstm_units (int): output dim of LSTM
+            load_lstm ([bool], optional): Load LSTM model. Defaults to None.
+            load_backbone ([bool], optional): Load Resnet model. Defaults to None.
+        """
+        super().__init__()
+        # Construct Resnet
+        resnet = models.resnet50(pretrained=True)
+        if load_backbone is not None:
+            load_network(resnet, load_backbone, 'module.backbone.')
+        for param in resnet.parameters():
+            param.requires_grad = train_backbone
+        resnet.fc = nn.Sequential()
+        self.backbone = resnet
+        self.D = 7
+        self.corrnet = CorrNet(self.D**2)
+        if load_corr is not None:
+            load_network(self.corrnet, load_corr, "module.corrnet.")
+
+        # Construct LSTM
+        # input_dim = 512
+        input_dim = 2048 + 512
+        self.lstm = nn.LSTM(input_dim, lstm_units)
+        if load_lstm is not None:
+            load_network(self.lstm, load_lstm, 'module.lstm.')
+        self.fc = nn.Linear(lstm_units, classes)
+        # self.fc = nn.Sequential(nn.Linear(lstm_units, 200),
+        #                         nn.ReLU(),
+        #                         nn.Linear(200, classes))
+        
+    def forward(self, frames):
+        self.lstm.flatten_parameters()
+        feature_map, x, F, N = next_feature_extraction(self.backbone, frames, self.D, (self.D -1)//2)
+        features = self.corrnet(feature_map)
+        features = torch.cat([features.view(F, N, -1), x.view(F, N, -1)], dim=-1)
+        T = F - 1
+        features = features.narrow(0, 0, T)
+        features, _ = self.lstm(features)
+        output = self.fc(features.view(T * N, -1))
+        return output.view(T, N, -1)
 
 class CNN(nn.Module):
     def __init__(self, classes):
@@ -57,9 +108,8 @@ class CNN(nn.Module):
 class SeqClsMixin:
     def train_batch(self, frames, labels):
         logits = self.model(frames)
-        steps, batch_size = logits.size()[:2]
+        steps, batch_size, _ = logits.size()
         logits = logits.view(steps * batch_size, -1)
-
         labels = labels.repeat(steps) # T * B
         loss = nn.CrossEntropyLoss()(logits, labels)
         acc = accuracy(logits, labels)
@@ -67,8 +117,7 @@ class SeqClsMixin:
 
     def predict_batch(self, frames, labels):
         logits = self.model(frames)
-        steps, batch_size = logits.size()[:2]
-
+        steps, batch_size, _ = logits.size()
         proba = F.softmax(logits, dim=-1)
         proba = torch.mean(proba, dim=0) # B * Classes
 
@@ -109,3 +158,7 @@ class ConvLSTMFramework(SeqClsMixin, Framework):
 class CNNFramework(SeqClsMixin, Framework):
     def build_network(self):
         self.model = CNN(self.classes)
+
+class CorrelationLSTMFramework(SeqClsMixin, Framework):
+    def build_network(self):
+        self.model = CorrelationLSTM(self.classes, **self.config['network'])

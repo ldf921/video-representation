@@ -6,10 +6,10 @@ sys.path.append('/app')
 import torch
 import yaml
 
-from lib.convlstm import ConvLSTMFramework, CNNFramework
+from lib.convlstm import ConvLSTMFramework, CNNFramework, CorrelationLSTMFramework
 from lib.voxelflow import VoxelFlowFramework, VoxelFlowFrameworkClassification
 from lib.base import load_network
-from lib.lstm import SeqFramework, SeqPredFramework
+from lib.lstm import SeqFramework, SeqPredFramework, CorrSeqPredFramework, CorrFramePredFramework
 from lib.stackcnn import stackcl_framework
 
 
@@ -67,6 +67,15 @@ elif config['framework'] == 'voxelflow':
     framework = VoxelFlowFramework(config)
 elif config['framework'] == 'voxelflow_class':
     framework = VoxelFlowFrameworkClassification(config)
+elif config['framework'] == 'corrlstm':
+    print("Using Correlation LSTM")
+    framework = CorrelationLSTMFramework(config)
+elif config['framework'] == 'corrseq':
+    print("Using Correlation LSTM for order prediction")
+    framework = CorrSeqPredFramework(config)
+elif config['framework'] == 'corrframe':
+    print("Using Correlation LSTM for frame prediction")
+    framework = CorrFramePredFramework(config)
 
 CP_ROOT = 'checkpoints'
 if args.test is not None or args.resume:
