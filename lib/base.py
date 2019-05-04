@@ -135,8 +135,9 @@ def next_two_feature_extraction(model: nn.Module, input: torch.tensor, D: int = 
             feature = feature.repeat(2,1,1)
             next_two_features = unfolder(next_two_features)
             next_two_features = feature * next_two_features
+        elif i  == 8:
             # Return tensor [2FN * D^2 * H * W], first FN is next_feature, second FN is skipped_feature
-            return torch.sum(next_two_features.view(2*F*N, C_layer, D**2, H_layer, W_layer), dim=1), F, N
+            return torch.sum(next_two_features.view(2*F*N, C_layer, D**2, H_layer, W_layer), dim=1), x, F, N
 
 def next_feature_extraction(model: nn.Module, input: torch.tensor, D: int = 3, padding: int = 1, stride: int = 1) -> torch.tensor:
     """ Extract features from intermediate layers

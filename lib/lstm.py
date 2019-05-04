@@ -193,7 +193,7 @@ class FrameCorrelationPredict(nn.Module):
         self.corrnet = CorrNet(self.D**2)
 
         # Construct LSTM
-        input_dim = 512
+        input_dim = 2048 + 512
         self.lstm_units = lstm_units
         self.lstm = nn.LSTM(input_dim, lstm_units)
         # Construct FC, input dimension (4 * lstm_unit)
@@ -202,14 +202,8 @@ class FrameCorrelationPredict(nn.Module):
                     nn.ReLU(),
                     nn.Linear(100, 2)
                     )
-        # self.fc = nn.Sequential(
-        #             nn.Linear(lstm_units, 100),
-        #             nn.ReLU(),
-        #             nn.Linear(100, 2)
-        #             )
         self.register_buffer('label', torch.LongTensor([1, 0]))
-        # self.register_buffer('pos', torch.LongTensor([1]))
-        # self.register_buffer('neg', torch.LongTensor([0]))
+
 
 
     def train(self, mode=True):
@@ -231,10 +225,11 @@ class FrameCorrelationPredict(nn.Module):
             frames (torch.tensor): Input frames [F * N * C * H * W]
         """
         # Get correlation features [F * N * 2048]
-        feature_map, F, N = next_two_feature_extraction(self.backbone, frames, self.D, (self.D -1)//2)
+        feature_map, x, F, N = next_two_feature_extraction(self.backbone, frames, self.D, (self.D -1)//2)
         f = self.corrnet(feature_map)
-        features = f.narrow(0 ,0, F*N).view(F, N, -1)
-        skipped_features = f.narrow(0 ,F*N, F*N).view(F, N, -1)
+        x = x.view(F, N, -1)
+        features = torch.cat([f.narrow(0 ,0, F*N).view(F, N, -1), x], dim=-1)
+        skipped_features = torch.cat([f.narrow(0 ,F*N, F*N).view(F, N, -1), x], dim=-1)
         # Note that our last 2 frame feature is inaccurate due to looping
         # The idea is, the output of consecutive frames and skipping one frame should be different
         T = F - 2
@@ -273,81 +268,6 @@ class FrameCorrelationPredict(nn.Module):
         # labels = labels.repeat(T, 1) # [T * (2 * N)]
         labels = self.label.repeat(T, N, 1).view(T, N * 2)
         return predictions, labels
-
-class FrameCorrelationFeaturePredict(nn.Module):
-
-    def __init__(self, lstm_units, train_backbone = False):
-        """ Construct predictor similar to FramePridict using CorrelationLSTM
-
-        Args:
-            lstm_units (int): Number of LSTM units
-            train_backbone (bool, optional): Whether to train Resnet or not. Defaults to False.
-        """
-        super().__init__()
-        # Construct Resnet
-        resnet = models.resnet50(pretrained=True)
-        # Set train Resnet or not
-        for param in resnet.parameters():
-            param.requires_grad = train_backbone
-        self.train_backbone = train_backbone
-        self.backbone = resnet
-
-        # Construct LSTM
-        input_dim = 2048
-        self.lstm_units = lstm_units
-        self.lstm = nn.LSTM(input_dim, lstm_units)
-        # Construct FC, input dimension (4 * lstm_unit)
-        self.compare_fc = nn.Sequential(
-            nn.Linear(input_dim * 2, lstm_units),
-            nn.ReLU())
-        self.predict_mlp = nn.Sequential(
-            nn.Linear(lstm_units * 2, 100),
-            nn.ReLU(),
-            nn.Linear(100, 2)
-            )
-        self.register_buffer('label', torch.LongTensor([1, 0]))
-
-
-    def train(self, mode=True):
-        for layer in self.children():
-            if layer == self.backbone:
-                layer.train(self.train_backbone and mode)
-                if not self.train_backbone and mode:
-                    print('Fixing resnet in evaluation mode')
-            else:
-                layer.train(mode)
-
-    def forward(self, frames: torch.tensor) -> Tuple[torch.tensor, torch.tensor]:
-        """ Build Correlation LSTM for order prediction task
-            Predict the order of F - 2 pair of frames (F - 1 frames used)
-            Feed 2 frames back and forth for symmetry
-            Return predictions and labels in [T * N * 2 * 2]
-
-        Args:
-            frames (torch.tensor): Input frames [F * N * C * H * W]
-        """
-        # Get correlation features [F * N * 2048]
-        features = one_kernel_feature_extraction(self.backbone, frames)
-        F, N, _ = features.size()
-        # Note that our last frame feature is inaccurate due to looping
-        # The idea is, the output of consecutive frames and skipping one frame should be different
-        T = F - 4
-        self.lstm.flatten_parameters()
-        lstm_features, _ = self.lstm(features.narrow(0, 0, T))
-
-        features_p = torch.cat([features.narrow(0, 2, T), features.narrow(0, 3, T)], dim = -1)
-        features_n = torch.cat([features.narrow(0, 3, T), features.narrow(0, 2, T)], dim = -1)
-
-        concat_features = torch.cat([features_p, features_n], dim = -1).view(T * N * 2, -1)
-
-        lstm_features = lstm_features.repeat(1, 1, 2).view(T * N * 2, -1)
-        fuse = torch.cat([lstm_features, self.compare_fc(concat_features)], dim = -1)
-        predictions = self.predict_mlp(fuse).view(T, N * 2, 2)
-
-        d = frames.device
-        labels = self.label.repeat(T, N, 1).view(T, N * 2)
-        return predictions, labels
-
 
 def l2loss(x, y):
     return torch.sum((x - y) ** 2, dim=-1)
